@@ -82,7 +82,9 @@ namespace Web::ARIA {
     __ENUMERATE_ARIA_ROLE(search)           \
     __ENUMERATE_ARIA_ROLE(searchbox)        \
     __ENUMERATE_ARIA_ROLE(section)          \
+    __ENUMERATE_ARIA_ROLE(sectionfooter)    \
     __ENUMERATE_ARIA_ROLE(sectionhead)      \
+    __ENUMERATE_ARIA_ROLE(sectionheader)    \
     __ENUMERATE_ARIA_ROLE(select)           \
     __ENUMERATE_ARIA_ROLE(separator)        \
     __ENUMERATE_ARIA_ROLE(slider)           \
@@ -126,7 +128,6 @@ bool is_landmark_role(Role);
 bool is_live_region_role(Role);
 bool is_windows_role(Role);
 
-bool is_non_abstract_role(Role);
 bool allows_name_from_content(Role);
 
 }
