@@ -260,7 +260,7 @@ ErrorOr<NonnullRefPtr<Gfx::Typeface>> FontLoader::try_load_font()
         mime_type = MimeSniff::Resource::sniff(resource()->encoded_data(), Web::MimeSniff::SniffingConfiguration { .sniffing_context = Web::MimeSniff::SniffingContext::Font });
     }
     if (mime_type.has_value()) {
-        if (mime_type->essence() == "font/ttf"sv || mime_type->essence() == "application/x-font-ttf"sv) {
+        if (mime_type->essence() == "font/ttf"sv || mime_type->essence() == "application/x-font-ttf"sv || mime_type->essence() == "font/otf"sv) {
             if (auto result = Gfx::Typeface::try_load_from_externally_owned_memory(resource()->encoded_data()); !result.is_error()) {
                 return result;
             }
@@ -466,8 +466,14 @@ Vector<MatchingRule> StyleComputer::collect_matching_rules(DOM::Element const& e
     }
     if (auto it = rule_cache.rules_by_tag_name.find(element.local_name()); it != rule_cache.rules_by_tag_name.end())
         add_rules_to_run(it->value);
-    if (pseudo_element.has_value())
-        add_rules_to_run(rule_cache.rules_by_pseudo_element[to_underlying(pseudo_element.value())]);
+    if (pseudo_element.has_value()) {
+        if (CSS::Selector::PseudoElement::is_known_pseudo_element_type(pseudo_element.value())) {
+            add_rules_to_run(rule_cache.rules_by_pseudo_element.at(to_underlying(pseudo_element.value())));
+        } else {
+            // NOTE: We don't cache rules for unknown pseudo-elements. They can't match anything anyway.
+        }
+    }
+
     if (element.is_document_element())
         add_rules_to_run(rule_cache.root_rules);
 
@@ -2110,6 +2116,14 @@ void StyleComputer::compute_font(StyleProperties& style, DOM::Element const* ele
     compute_defaulted_property_value(style, element, CSS::PropertyID::FontStyle, pseudo_element);
     compute_defaulted_property_value(style, element, CSS::PropertyID::FontWeight, pseudo_element);
     compute_defaulted_property_value(style, element, CSS::PropertyID::LineHeight, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariant, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariantAlternates, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariantCaps, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariantEmoji, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariantEastAsian, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariantLigatures, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariantNumeric, pseudo_element);
+    compute_defaulted_property_value(style, element, CSS::PropertyID::FontVariantPosition, pseudo_element);
 
     auto const& font_family = style.property(CSS::PropertyID::FontFamily);
     auto const& font_size = style.property(CSS::PropertyID::FontSize);
@@ -2624,7 +2638,7 @@ NonnullOwnPtr<StyleComputer::RuleCache> StyleComputer::make_rule_cache_for_casca
                 }
                 if (!added_to_bucket) {
                     if (matching_rule.contains_pseudo_element) {
-                        if (to_underlying(pseudo_element.value()) < to_underlying(CSS::Selector::PseudoElement::Type::KnownPseudoElementCount)) {
+                        if (CSS::Selector::PseudoElement::is_known_pseudo_element_type(pseudo_element.value())) {
                             rule_cache->rules_by_pseudo_element[to_underlying(pseudo_element.value())].append(move(matching_rule));
                         } else {
                             // NOTE: We don't cache rules for unknown pseudo-elements. They can't match anything anyway.

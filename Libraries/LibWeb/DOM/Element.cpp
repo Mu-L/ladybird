@@ -1069,6 +1069,10 @@ void Element::set_pseudo_element_node(Badge<Layout::TreeBuilder>, CSS::Selector:
     if (!existing_pseudo_element.has_value() && !pseudo_element_node)
         return;
 
+    if (!CSS::Selector::PseudoElement::is_known_pseudo_element_type(pseudo_element)) {
+        return;
+    }
+
     ensure_pseudo_element(pseudo_element).layout_node = move(pseudo_element_node);
 }
 
@@ -1520,7 +1524,7 @@ WebIDL::ExceptionOr<void> Element::set_outer_html(String const& value)
     if (parent->is_document())
         return WebIDL::NoModificationAllowedError::create(realm(), "Cannot set outer HTML on document"_string);
 
-    // 5. If parent is a DocumentFragment, set parent to the result of creating an element given this's node document, body, and the HTML namespace.
+    // 5. If parent is a DocumentFragment, set parent to the result of creating an element given this's node document, "body", and the HTML namespace.
     if (parent->is_document_fragment())
         parent = TRY(create_element(document(), HTML::TagNames::body, Namespace::HTML));
 
@@ -2084,7 +2088,7 @@ JS::ThrowCompletionOr<void> Element::upgrade_element(GC::Ref<HTML::CustomElement
     set_custom_element_state(CustomElementState::Failed);
 
     // 4. For each attribute in element's attribute list, in order, enqueue a custom element callback reaction with element, callback name "attributeChangedCallback",
-    //    and an argument list containing attribute's local name, null, attribute's value, and attribute's namespace.
+    //    and « attribute's local name, null, attribute's value, attribute's namespace ».
     for (size_t attribute_index = 0; attribute_index < m_attributes->length(); ++attribute_index) {
         auto const* attribute = m_attributes->item(attribute_index);
         VERIFY(attribute);
@@ -2099,7 +2103,7 @@ JS::ThrowCompletionOr<void> Element::upgrade_element(GC::Ref<HTML::CustomElement
         enqueue_a_custom_element_callback_reaction(HTML::CustomElementReactionNames::attributeChangedCallback, move(arguments));
     }
 
-    // 5. If element is connected, then enqueue a custom element callback reaction with element, callback name "connectedCallback", and an empty argument list.
+    // 5. If element is connected, then enqueue a custom element callback reaction with element, callback name "connectedCallback", and « ».
     if (is_connected()) {
         GC::MarkedVector<JS::Value> empty_arguments { vm.heap() };
         enqueue_a_custom_element_callback_reaction(HTML::CustomElementReactionNames::connectedCallback, move(empty_arguments));
@@ -2279,6 +2283,11 @@ void Element::set_pseudo_element_computed_css_values(CSS::Selector::PseudoElemen
 {
     if (!m_pseudo_element_data && !style.has_value())
         return;
+
+    if (!CSS::Selector::PseudoElement::is_known_pseudo_element_type(pseudo_element)) {
+        return;
+    }
+
     ensure_pseudo_element(pseudo_element).computed_css_values = move(style);
 }
 
@@ -2294,6 +2303,11 @@ Optional<Element::PseudoElement&> Element::get_pseudo_element(CSS::Selector::Pse
 {
     if (!m_pseudo_element_data)
         return {};
+
+    if (!CSS::Selector::PseudoElement::is_known_pseudo_element_type(type)) {
+        return {};
+    }
+
     return m_pseudo_element_data->at(to_underlying(type));
 }
 
@@ -2301,6 +2315,9 @@ Element::PseudoElement& Element::ensure_pseudo_element(CSS::Selector::PseudoElem
 {
     if (!m_pseudo_element_data)
         m_pseudo_element_data = make<PseudoElementData>();
+
+    VERIFY(CSS::Selector::PseudoElement::is_known_pseudo_element_type(type));
+
     return m_pseudo_element_data->at(to_underlying(type));
 }
 
@@ -2310,6 +2327,11 @@ void Element::set_custom_properties(Optional<CSS::Selector::PseudoElement::Type>
         m_custom_properties = move(custom_properties);
         return;
     }
+
+    if (!CSS::Selector::PseudoElement::is_known_pseudo_element_type(pseudo_element.value())) {
+        return;
+    }
+
     ensure_pseudo_element(pseudo_element.value()).custom_properties = move(custom_properties);
 }
 
@@ -2317,6 +2339,9 @@ HashMap<FlyString, CSS::StyleProperty> const& Element::custom_properties(Optiona
 {
     if (!pseudo_element.has_value())
         return m_custom_properties;
+
+    VERIFY(CSS::Selector::PseudoElement::is_known_pseudo_element_type(pseudo_element.value()));
+
     return ensure_pseudo_element(pseudo_element.value()).custom_properties;
 }
 

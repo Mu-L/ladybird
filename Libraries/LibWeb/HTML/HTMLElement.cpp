@@ -5,6 +5,7 @@
  */
 
 #include <AK/StringBuilder.h>
+#include <LibJS/Runtime/NativeFunction.h>
 #include <LibWeb/ARIA/Roles.h>
 #include <LibWeb/Bindings/ExceptionOrUtils.h>
 #include <LibWeb/Bindings/HTMLElementPrototype.h>
@@ -17,6 +18,7 @@
 #include <LibWeb/DOM/Position.h>
 #include <LibWeb/DOM/ShadowRoot.h>
 #include <LibWeb/HTML/BrowsingContext.h>
+#include <LibWeb/HTML/CloseWatcher.h>
 #include <LibWeb/HTML/CustomElements/CustomElementDefinition.h>
 #include <LibWeb/HTML/ElementInternals.h>
 #include <LibWeb/HTML/EventHandler.h>
@@ -65,6 +67,7 @@ void HTMLElement::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_labels);
     visitor.visit(m_attached_internals);
     visitor.visit(m_popover_invoker);
+    visitor.visit(m_popover_close_watcher);
 }
 
 // https://html.spec.whatwg.org/multipage/dom.html#dom-dir
@@ -234,7 +237,7 @@ GC::Ref<DOM::DocumentFragment> HTMLElement::rendered_text_fragment(StringView in
                 input = input.substring_view(1);
             }
 
-            // 3. Append the result of creating an element given document, br, and the HTML namespace to fragment.
+            // 3. Append the result of creating an element given document, "br", and the HTML namespace to fragment.
             auto br_element = DOM::create_element(document(), HTML::TagNames::br, Namespace::HTML).release_value();
             MUST(fragment->append_child(br_element));
         }
@@ -766,10 +769,16 @@ Optional<ARIA::Role> HTMLElement::default_role() const
         // complementary, main, navigation or region then (footer) role=contentinfo (header) role=banner. Otherwise,
         // role=generic.
         for (auto const* ancestor = parent_element(); ancestor; ancestor = ancestor->parent_element()) {
-            if (first_is_one_of(ancestor->local_name(), TagNames::article, TagNames::aside, TagNames::main, TagNames::nav, TagNames::section))
-                return ARIA::Role::generic;
-            if (first_is_one_of(ancestor->role_or_default(), ARIA::Role::article, ARIA::Role::complementary, ARIA::Role::main, ARIA::Role::navigation, ARIA::Role::region))
-                return ARIA::Role::generic;
+            if (first_is_one_of(ancestor->local_name(), TagNames::article, TagNames::aside, TagNames::main, TagNames::nav, TagNames::section)) {
+                if (local_name() == TagNames::footer)
+                    return ARIA::Role::sectionfooter;
+                return ARIA::Role::sectionheader;
+            }
+            if (first_is_one_of(ancestor->role_or_default(), ARIA::Role::article, ARIA::Role::complementary, ARIA::Role::main, ARIA::Role::navigation, ARIA::Role::region)) {
+                if (local_name() == TagNames::footer)
+                    return ARIA::Role::sectionfooter;
+                return ARIA::Role::sectionheader;
+            }
         }
         // then (footer) role=contentinfo.
         if (local_name() == TagNames::footer)
@@ -1045,9 +1054,20 @@ WebIDL::ExceptionOr<void> HTMLElement::show_popover(ThrowExceptions throw_except
         // FIXME: 11.5. If originalType is not equal to the value of element's popover attribute, then throw a "InvalidStateError" DOMException.
         // FIXME: 11.6. If the result of running check popover validity given element, false, throwExceptions, and document is false, then run cleanupShowingFlag and return.
         // FIXME: 11.7. If the result of running topmost auto popover on document is null, then set shouldRestoreFocus to true.
-        // FIXME: 11.8. Set element's popover close watcher to the result of establishing a close watcher given element's relevant global object, with:
+        // 11.8. Set element's popover close watcher to the result of establishing a close watcher given element's relevant global object, with:
+        m_popover_close_watcher = CloseWatcher::establish(*document.window());
         // - cancelAction being to return true.
+        // We simply don't add an event listener for the cancel action.
         // - closeAction being to hide a popover given element, true, true, and false.
+        auto close_callback_function = JS::NativeFunction::create(
+            realm(), [this](JS::VM&) {
+                MUST(hide_popover(FocusPreviousElement::Yes, FireEvents::Yes, ThrowExceptions::No));
+
+                return JS::js_undefined();
+            },
+            0, "", &realm());
+        auto close_callback = realm().heap().allocate<WebIDL::CallbackType>(*close_callback_function, realm());
+        m_popover_close_watcher->add_event_listener_without_options(HTML::EventNames::close, DOM::IDLEventListener::create(realm(), close_callback));
     }
 
     // FIXME: 12. Set element's previously focused element to null.
@@ -1110,9 +1130,13 @@ WebIDL::ExceptionOr<void> HTMLElement::hide_popover(FocusPreviousElement, FireEv
         // 6.1. If nestedHide is false, then set element's popover showing or hiding to false.
         if (nested_hide)
             m_popover_showing_or_hiding = false;
-        // FIXME: 6.2. If element's popover close watcher is not null, then:
-        // FIXME: 6.2.1. Destroy element's popover close watcher.
-        // FIXME: 6.2.2. Set element's popover close watcher to null.
+        // 6.2. If element's popover close watcher is not null, then:
+        if (m_popover_close_watcher) {
+            // 6.2.1. Destroy element's popover close watcher.
+            m_popover_close_watcher->destroy();
+            // 6.2.2. Set element's popover close watcher to null.
+            m_popover_close_watcher = nullptr;
+        }
     };
 
     // 7. If element's popover attribute is in the auto state, then:
@@ -1267,6 +1291,15 @@ void HTMLElement::did_lose_focus()
         return;
 
     document().editing_host_manager()->set_active_contenteditable_element(nullptr);
+}
+
+void HTMLElement::removed_from(Node* old_parent)
+{
+    Element::removed_from(old_parent);
+
+    // If removedNode's popover attribute is not in the no popover state, then run the hide popover algorithm given removedNode, false, false, and false.
+    if (popover().has_value())
+        MUST(hide_popover(FocusPreviousElement::No, FireEvents::No, ThrowExceptions::No));
 }
 
 // https://html.spec.whatwg.org/multipage/interaction.html#dom-accesskeylabel
