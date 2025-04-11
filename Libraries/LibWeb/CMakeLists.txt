@@ -153,7 +153,7 @@ set(SOURCES
     CSS/StyleValues/ContentStyleValue.cpp
     CSS/StyleValues/CounterDefinitionsStyleValue.cpp
     CSS/StyleValues/CounterStyleValue.cpp
-    CSS/StyleValues/CSSColor.cpp
+    CSS/StyleValues/ColorFunctionStyleValue.cpp
     CSS/StyleValues/CSSColorValue.cpp
     CSS/StyleValues/CSSHSL.cpp
     CSS/StyleValues/CSSHWB.cpp
@@ -195,6 +195,7 @@ set(SOURCES
     CSS/Time.cpp
     CSS/Transformation.cpp
     CSS/TransitionEvent.cpp
+    CSS/URL.cpp
     CSS/VisualViewport.cpp
     Cookie/Cookie.cpp
     Cookie/ParsedCookie.cpp
@@ -566,6 +567,7 @@ set(SOURCES
     IndexedDB/IDBVersionChangeEvent.cpp
     IndexedDB/Internal/Algorithms.cpp
     IndexedDB/Internal/Database.cpp
+    IndexedDB/Internal/Index.cpp
     IndexedDB/Internal/Key.cpp
     IndexedDB/Internal/ObjectStore.cpp
     IndexedDB/Internal/RequestList.cpp
