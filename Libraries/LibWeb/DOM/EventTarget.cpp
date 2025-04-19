@@ -3,6 +3,7 @@
  * Copyright (c) 2022, Luke Wilde <lukew@serenityos.org>
  * Copyright (c) 2024, Glenn Skrzypczak <glenn.skrzypczak@gmail.com>
  * Copyright (c) 2025, Felipe Muñoz Mazur <felipe.munoz.mazur@protonmail.com>
+ * Copyright (c) 2025, Simon Farre <simon.farre.cx@gmail.com>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -39,6 +40,7 @@
 #include <LibWeb/UIEvents/EventNames.h>
 #include <LibWeb/UIEvents/KeyCode.h>
 #include <LibWeb/UIEvents/KeyboardEvent.h>
+#include <LibWeb/UIEvents/PointerEvent.h>
 #include <LibWeb/WebIDL/AbstractOperations.h>
 
 namespace Web::DOM {
@@ -65,7 +67,7 @@ void EventTarget::initialize(JS::Realm& realm)
 
     // FIXME: We can't do this for HTML::Window or HTML::WorkerGlobalScope, as this will run when creating the initial global object.
     //        During this time, the ESO is not setup, so it will cause a nullptr dereference in host_defined_intrinsics.
-    if (!is<HTML::WindowOrWorkerGlobalScopeMixin>(this))
+    if (!is_window_or_worker_global_scope_mixin())
         WEB_SET_PROTOTYPE_FOR_INTERFACE(EventTarget);
 }
 
@@ -231,7 +233,7 @@ void EventTarget::add_an_event_listener(DOMEventListener& listener)
     // 6. If listener’s signal is not null, then add the following abort steps to it:
     if (listener.signal) {
         // NOTE: `this` and `listener` are protected by AbortSignal using GC::HeapFunction.
-        listener.signal->add_abort_algorithm([this, &listener] {
+        (void)listener.signal->add_abort_algorithm([this, &listener] {
             // 1. Remove an event listener with eventTarget and listener.
             remove_an_event_listener(listener);
         });
@@ -696,7 +698,7 @@ JS::ThrowCompletionOr<void> EventTarget::process_event_handler_for_event(FlyStri
         //        calls directly into the callback without considering things such as proxies, it is a waste. However, if it observable, then we must reuse the this_value that was given to the callback.
         auto* this_value = error_event.current_target().ptr();
 
-        return_value_or_error = WebIDL::invoke_callback(*callback, this_value, wrapped_message, wrapped_filename, wrapped_lineno, wrapped_colno, error_event.error());
+        return_value_or_error = WebIDL::invoke_callback(*callback, this_value, { { wrapped_message, wrapped_filename, wrapped_lineno, wrapped_colno, error_event.error() } });
     } else {
         // -> Otherwise
         // Invoke callback with one argument, the value of which is the Event object event, with the callback this value set to event's currentTarget. Let return value be the callback's return value. [WEBIDL]
@@ -707,7 +709,7 @@ JS::ThrowCompletionOr<void> EventTarget::process_event_handler_for_event(FlyStri
         // FIXME: The comments about this in the special_error_event_handling path also apply here.
         auto* this_value = event.current_target().ptr();
 
-        return_value_or_error = WebIDL::invoke_callback(*callback, this_value, wrapped_event);
+        return_value_or_error = WebIDL::invoke_callback(*callback, this_value, { { wrapped_event } });
     }
 
     // If an exception gets thrown by the callback, end these steps and allow the exception to propagate. (It will propagate to the DOM event dispatch logic, which will then report the exception.)
@@ -822,10 +824,19 @@ bool EventTarget::dispatch_event(Event& event)
         if (event.type() == UIEvents::EventNames::mousedown)
             return true;
 
-        // FIXME:
         // pointerdown, provided the event's pointerType is "mouse".
+        if (event.type() == UIEvents::EventNames::pointerdown) {
+            if (auto* pointer_event = as_if<UIEvents::PointerEvent>(&event))
+                return pointer_event->pointer_type() == "mouse"sv;
+        }
+
         // pointerup, provided the event's pointerType is not "mouse".
-        // touchend.
+        if (event.type() == UIEvents::EventNames::pointerup) {
+            if (auto* pointer_event = as_if<UIEvents::PointerEvent>(&event))
+                return pointer_event->pointer_type() != "mouse"sv;
+        }
+
+        // FIXME: touchend
 
         return false;
     };
@@ -848,16 +859,22 @@ bool EventTarget::dispatch_event(Event& event)
         auto unsafe_shared_time = HighResolutionTime::unsafe_shared_current_time();
         auto current_time = HighResolutionTime::relative_high_resolution_time(unsafe_shared_time, realm().global_object());
 
-        if (is<HTML::Window>(this)) {
-            auto* window = static_cast<HTML::Window*>(this);
+        GC::Ptr<HTML::Window> window = [&]() {
+            if (is<HTML::Window>(this))
+                return GC::Ptr { static_cast<HTML::Window*>(this) };
+
+            if (is<DOM::Element>(this))
+                return static_cast<DOM::Element const*>(this)->document().window();
+
+            if (is<DOM::Document>(this))
+                return static_cast<DOM::Document const*>(this)->window();
+
+            return GC::Ptr<HTML::Window> { nullptr };
+        }();
+
+        if (window) {
             window->set_last_activation_timestamp(current_time);
             window->close_watcher_manager()->notify_about_user_activation();
-        } else if (is<DOM::Element>(this)) {
-            auto const* element = static_cast<DOM::Element const*>(this);
-            if (auto window = element->document().window()) {
-                window->set_last_activation_timestamp(current_time);
-                window->close_watcher_manager()->notify_about_user_activation();
-            }
         }
     }
 

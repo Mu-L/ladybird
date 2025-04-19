@@ -378,7 +378,8 @@ i32 WindowOrWorkerGlobalScopeMixin::run_timer_initialization_steps(TimerHandler 
         }));
     };
 
-    // 13. Set uniqueHandle to the result of running steps after a timeout given global, "setTimeout/setInterval", timeout, completionStep.
+    // 13. Set uniqueHandle to the result of running steps after a timeout given global, "setTimeout/setInterval",
+    //     timeout, and completionStep.
     //     FIXME: run_steps_after_a_timeout() needs to be updated to return a unique internal value that can be used here.
     run_steps_after_a_timeout_impl(timeout, move(completion_step), id);
 
@@ -638,7 +639,7 @@ void WindowOrWorkerGlobalScopeMixin::queue_the_performance_observer_task()
             // 9. Call po’s observer callback with observerEntryList as the first argument, with po as the second
             //    argument and as callback this value, and with callbackOptions as the third argument.
             //    If this throws an exception, report the exception.
-            auto completion = WebIDL::invoke_callback(registered_observer->callback(), registered_observer, observer_entry_list, registered_observer, callback_options);
+            auto completion = WebIDL::invoke_callback(registered_observer->callback(), registered_observer, { { observer_entry_list, registered_observer, callback_options } });
             if (completion.is_abrupt())
                 HTML::report_exception(completion, realm);
         }
@@ -994,7 +995,7 @@ void WindowOrWorkerGlobalScopeMixin::report_an_exception(JS::Value exception, Om
         if (false) {
             // FIXME: 1. Let workerObject be the Worker object associated with global.
 
-            // FIXME: 2. Set notHandled be the result of firing an event named error at workerObject, using ErrorEvent,
+            // FIXME: 2. Set notHandled to the result of firing an event named error at workerObject, using ErrorEvent,
             //    with the cancelable attribute initialized to true, and additional attributes initialized
             //    according to errorInfo.
 

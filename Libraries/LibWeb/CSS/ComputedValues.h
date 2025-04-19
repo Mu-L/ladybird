@@ -80,7 +80,7 @@ struct Containment {
     bool is_empty() const { return !(size_containment || inline_size_containment || layout_containment || style_containment || paint_containment); }
 };
 
-using CursorData = Variant<NonnullRefPtr<CursorStyleValue>, Cursor>;
+using CursorData = Variant<NonnullRefPtr<CursorStyleValue const>, Cursor>;
 
 using ListStyleType = Variant<CounterStyleNameKeyword, String>;
 
@@ -225,40 +225,40 @@ public:
         : m_value(color)
     {
     }
-    SVGPaint(URL::URL const& url)
+    SVGPaint(::URL::URL const& url)
         : m_value(url)
     {
     }
 
     bool is_color() const { return m_value.has<Color>(); }
-    bool is_url() const { return m_value.has<URL::URL>(); }
+    bool is_url() const { return m_value.has<::URL::URL>(); }
     Color as_color() const { return m_value.get<Color>(); }
-    URL::URL const& as_url() const { return m_value.get<URL::URL>(); }
+    ::URL::URL const& as_url() const { return m_value.get<::URL::URL>(); }
 
 private:
-    Variant<URL::URL, Color> m_value;
+    Variant<::URL::URL, Color> m_value;
 };
 
 // https://drafts.fxtf.org/css-masking-1/#typedef-mask-reference
 class MaskReference {
 public:
     // TODO: Support other mask types.
-    MaskReference(URL::URL const& url)
+    MaskReference(::URL::URL const& url)
         : m_url(url)
     {
     }
 
-    URL::URL const& url() const { return m_url; }
+    ::URL::URL const& url() const { return m_url; }
 
 private:
-    URL::URL m_url;
+    ::URL::URL m_url;
 };
 
 // https://drafts.fxtf.org/css-masking/#the-clip-path
 // TODO: Support clip sources.
 class ClipPathReference {
 public:
-    ClipPathReference(URL::URL const& url)
+    ClipPathReference(::URL::URL const& url)
         : m_clip_source(url)
     {
     }
@@ -270,16 +270,16 @@ public:
 
     bool is_basic_shape() const { return m_clip_source.has<BasicShape>(); }
 
-    bool is_url() const { return m_clip_source.has<URL::URL>(); }
+    bool is_url() const { return m_clip_source.has<::URL::URL>(); }
 
-    URL::URL const& url() const { return m_clip_source.get<URL::URL>(); }
+    ::URL::URL const& url() const { return m_clip_source.get<::URL::URL>(); }
 
     BasicShapeStyleValue const& basic_shape() const { return *m_clip_source.get<BasicShape>(); }
 
 private:
     using BasicShape = NonnullRefPtr<BasicShapeStyleValue const>;
 
-    Variant<URL::URL, BasicShape> m_clip_source;
+    Variant<::URL::URL, BasicShape> m_clip_source;
 };
 
 struct BackgroundLayerData {
@@ -559,7 +559,7 @@ public:
 protected:
     struct {
         Color caret_color { InitialValues::caret_color() };
-        RefPtr<Gfx::FontCascadeList> font_list {};
+        RefPtr<Gfx::FontCascadeList const> font_list {};
         CSSPixels font_size { InitialValues::font_size() };
         int font_weight { InitialValues::font_weight() };
         Optional<Gfx::FontVariantAlternates> font_variant_alternates;
@@ -720,7 +720,7 @@ protected:
         Optional<MaskReference> mask;
         CSS::MaskType mask_type { InitialValues::mask_type() };
         Optional<ClipPathReference> clip_path;
-        RefPtr<CSS::AbstractImageStyleValue> mask_image;
+        RefPtr<CSS::AbstractImageStyleValue const> mask_image;
 
         LengthPercentage cx { InitialValues::cx() };
         LengthPercentage cy { InitialValues::cy() };
@@ -749,7 +749,7 @@ public:
 
     void set_aspect_ratio(AspectRatio aspect_ratio) { m_noninherited.aspect_ratio = move(aspect_ratio); }
     void set_caret_color(Color caret_color) { m_inherited.caret_color = caret_color; }
-    void set_font_list(NonnullRefPtr<Gfx::FontCascadeList> font_list) { m_inherited.font_list = move(font_list); }
+    void set_font_list(NonnullRefPtr<Gfx::FontCascadeList const> font_list) { m_inherited.font_list = move(font_list); }
     void set_font_size(CSSPixels font_size) { m_inherited.font_size = font_size; }
     void set_font_weight(int font_weight) { m_inherited.font_weight = font_weight; }
     void set_font_variant_alternates(Optional<Gfx::FontVariantAlternates> font_variant_alternates) { m_inherited.font_variant_alternates = font_variant_alternates; }

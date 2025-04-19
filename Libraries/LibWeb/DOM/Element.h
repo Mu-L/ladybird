@@ -30,6 +30,7 @@
 #include <LibWeb/HTML/TagNames.h>
 #include <LibWeb/IntersectionObserver/IntersectionObserver.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
+#include <LibWeb/WebIDL/Types.h>
 
 namespace Web::DOM {
 
@@ -270,7 +271,7 @@ public:
 
     static GC::Ptr<Layout::NodeWithStyle> create_layout_node_for_display_type(DOM::Document&, CSS::Display const&, GC::Ref<CSS::ComputedProperties>, Element*);
 
-    bool affected_by_hover() const;
+    [[nodiscard]] bool affected_by_pseudo_class(CSS::PseudoClass) const;
     bool includes_properties_from_invalidation_set(CSS::InvalidationSet const&) const;
 
     void set_pseudo_element_node(Badge<Layout::TreeBuilder>, CSS::PseudoElement, GC::Ptr<Layout::NodeWithStyle>);
@@ -466,6 +467,10 @@ public:
     Element const* list_owner() const;
     size_t ordinal_value() const;
 
+    void set_pointer_capture(WebIDL::Long pointer_id);
+    void release_pointer_capture(WebIDL::Long pointer_id);
+    bool has_pointer_capture(WebIDL::Long pointer_id);
+
 protected:
     Element(Document&, DOM::QualifiedName);
     virtual void initialize(JS::Realm&) override;
@@ -577,20 +582,14 @@ private:
 template<>
 inline bool Node::fast_is<Element>() const { return is_element(); }
 
-inline Element* Node::parent_element()
+inline GC::Ptr<Element> Node::parent_element()
 {
-    auto* parent = this->parent();
-    if (!parent || !is<Element>(parent))
-        return nullptr;
-    return static_cast<Element*>(parent);
+    return as_if<Element>(this->parent());
 }
 
-inline Element const* Node::parent_element() const
+inline GC::Ptr<Element const> Node::parent_element() const
 {
-    auto const* parent = this->parent();
-    if (!parent || !is<Element>(parent))
-        return nullptr;
-    return static_cast<Element const*>(parent);
+    return as_if<Element>(this->parent());
 }
 
 inline bool Element::has_class(FlyString const& class_name, CaseSensitivity case_sensitivity) const

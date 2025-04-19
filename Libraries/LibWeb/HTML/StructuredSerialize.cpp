@@ -658,7 +658,7 @@ WebIDL::ExceptionOr<void> serialize_viewed_array_buffer(JS::VM& vm, Vector<u32>&
     auto buffer_serialized = TRY(structured_serialize_internal(vm, buffer, for_storage, memory));
 
     // 4. Assert: bufferSerialized.[[Type]] is "ArrayBuffer", "ResizableArrayBuffer", "SharedArrayBuffer", or "GrowableSharedArrayBuffer".
-    // NOTE: Object reference + memory check is required when ArrayBuffer is transfered.
+    // NOTE: Object reference + memory check is required when ArrayBuffer is transferred.
     auto tag = buffer_serialized[0];
     VERIFY(tag == ValueTag::ArrayBuffer
         || tag == ValueTag::ResizeableArrayBuffer
@@ -1291,9 +1291,11 @@ static bool is_interface_exposed_on_target_realm(TransferType name, JS::Realm& r
     case TransferType::MessagePort:
         return intrinsics.is_exposed("MessagePort"sv);
         break;
-    default:
+    case TransferType::Unknown:
         dbgln("Unknown interface type for transfer: {}", to_underlying(name));
         break;
+    default:
+        VERIFY_NOT_REACHED();
     }
     return false;
 }
@@ -1310,14 +1312,16 @@ static WebIDL::ExceptionOr<GC::Ref<Bindings::PlatformObject>> create_transferred
     case TransferType::ResizableArrayBuffer:
         dbgln("ArrayBuffer ({}) is not a platform object.", to_underlying(name));
         break;
+    case TransferType::Unknown:
+        break;
     }
     VERIFY_NOT_REACHED();
 }
 
 // https://html.spec.whatwg.org/multipage/structured-data.html#structureddeserializewithtransfer
-WebIDL::ExceptionOr<DeserializedTransferRecord> structured_deserialize_with_transfer(JS::VM& vm, SerializedTransferRecord& serialize_with_transfer_result)
+WebIDL::ExceptionOr<DeserializedTransferRecord> structured_deserialize_with_transfer(SerializedTransferRecord& serialize_with_transfer_result, JS::Realm& target_realm)
 {
-    auto& target_realm = *vm.current_realm();
+    auto& vm = target_realm.vm();
 
     // 1. Let memory be an empty map.
     auto memory = DeserializationMemory(vm.heap());

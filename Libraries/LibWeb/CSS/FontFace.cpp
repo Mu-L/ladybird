@@ -27,9 +27,9 @@
 
 namespace Web::CSS {
 
-static NonnullRefPtr<Core::Promise<NonnullRefPtr<Gfx::Typeface>>> load_vector_font(JS::Realm& realm, ByteBuffer const& data)
+static NonnullRefPtr<Core::Promise<NonnullRefPtr<Gfx::Typeface const>>> load_vector_font(JS::Realm& realm, ByteBuffer const& data)
 {
-    auto promise = Core::Promise<NonnullRefPtr<Gfx::Typeface>>::construct();
+    auto promise = Core::Promise<NonnullRefPtr<Gfx::Typeface const>>::construct();
 
     // FIXME: 'Asynchronously' shouldn't mean 'later on the main thread'.
     //        Can we defer this to a background thread?
@@ -96,7 +96,7 @@ GC::Ref<FontFace> FontFace::construct_impl(JS::Realm& realm, String family, Font
     font_face->m_ascent_override = try_parse_descriptor(DescriptorID::AscentOverride, descriptors.ascent_override);
     font_face->m_descent_override = try_parse_descriptor(DescriptorID::DescentOverride, descriptors.descent_override);
     font_face->m_line_gap_override = try_parse_descriptor(DescriptorID::LineGapOverride, descriptors.line_gap_override);
-    RefPtr<CSSStyleValue> parsed_source;
+    RefPtr<CSSStyleValue const> parsed_source;
     if (auto* source_string = source.get_pointer<String>()) {
         parsed_source = parse_css_descriptor(parsing_params, AtRuleID::FontFace, DescriptorID::Src, *source_string);
         if (!parsed_source) {

@@ -21,11 +21,11 @@ namespace Ladybird {
 class HeadlessWebView final : public WebView::ViewImplementation {
 public:
     static NonnullOwnPtr<HeadlessWebView> create(Core::AnonymousBuffer theme, Web::DevicePixelSize window_size);
-    static NonnullOwnPtr<HeadlessWebView> create_child(HeadlessWebView const&, u64 page_index);
+    static NonnullOwnPtr<HeadlessWebView> create_child(HeadlessWebView&, u64 page_index);
 
     void clear_content_filters();
 
-    NonnullRefPtr<Core::Promise<RefPtr<Gfx::Bitmap>>> take_screenshot();
+    NonnullRefPtr<Core::Promise<RefPtr<Gfx::Bitmap const>>> take_screenshot();
 
     TestPromise& test_promise() { return *m_test_promise; }
     void on_test_complete(TestCompletion);
@@ -45,7 +45,7 @@ private:
     Core::AnonymousBuffer m_theme;
     Web::DevicePixelSize m_viewport_size;
 
-    RefPtr<Core::Promise<RefPtr<Gfx::Bitmap>>> m_pending_screenshot;
+    RefPtr<Core::Promise<RefPtr<Gfx::Bitmap const>>> m_pending_screenshot;
 
     NonnullRefPtr<TestPromise> m_test_promise;
 

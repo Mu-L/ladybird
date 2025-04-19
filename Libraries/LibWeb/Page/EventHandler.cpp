@@ -66,14 +66,20 @@ static DOM::Node* input_control_associated_with_ancestor_label_element(Painting:
 
 static bool parent_element_for_event_dispatch(Painting::Paintable& paintable, GC::Ptr<DOM::Node>& node, Layout::Node*& layout_node)
 {
+    layout_node = &paintable.layout_node();
+    if (layout_node->is_generated_for_backdrop_pseudo_element()) {
+        node = layout_node->pseudo_element_generator();
+        layout_node = node->layout_node();
+    }
+
     auto* current_ancestor_node = node.ptr();
     do {
-        if (is<HTML::FormAssociatedElement>(current_ancestor_node) && !dynamic_cast<HTML::FormAssociatedElement*>(current_ancestor_node)->enabled()) {
+        auto const* form_associated_element = as_if<HTML::FormAssociatedElement>(current_ancestor_node);
+        if (form_associated_element && !form_associated_element->enabled()) {
             return false;
         }
     } while ((current_ancestor_node = current_ancestor_node->parent()));
 
-    layout_node = &paintable.layout_node();
     while (layout_node && node && !node->is_element() && layout_node->parent()) {
         layout_node = layout_node->parent();
         if (layout_node->is_anonymous())
@@ -147,7 +153,7 @@ static Gfx::Cursor resolve_cursor(Layout::NodeWithStyle const& layout_node, Vect
                     return Gfx::StandardCursor::None;
                 }
             },
-            [&layout_node](NonnullRefPtr<CSS::CursorStyleValue> const& cursor_style_value) -> Optional<Gfx::Cursor> {
+            [&layout_node](NonnullRefPtr<CSS::CursorStyleValue const> const& cursor_style_value) -> Optional<Gfx::Cursor> {
                 if (auto image_cursor = cursor_style_value->make_image_cursor(layout_node); image_cursor.has_value())
                     return image_cursor.release_value();
                 return {};
@@ -550,7 +556,7 @@ EventResult EventHandler::handle_mouseup(CSSPixelPoint viewport_position, CSSPix
             }
 
             if (auto* input_control = input_control_associated_with_ancestor_label_element(*paintable)) {
-                if (button == UIEvents::MouseButton::Primary) {
+                if (button == UIEvents::MouseButton::Primary && input_control != node) {
                     input_control->dispatch_event(UIEvents::MouseEvent::create_from_platform_event(node->realm(), UIEvents::EventNames::click, screen_position, page_offset, viewport_position, offset, {}, button, buttons, modifiers).release_value_but_fixme_should_propagate_errors());
                 }
             }

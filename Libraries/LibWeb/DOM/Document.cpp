@@ -584,7 +584,8 @@ void Document::visit_edges(Cell::Visitor& visitor)
 
     visitor.visit(m_adopted_style_sheets);
 
-    visitor.visit(m_shadow_roots);
+    for (auto& shadow_root : m_shadow_roots)
+        visitor.visit(shadow_root);
 
     visitor.visit(m_top_layer_elements);
     visitor.visit(m_top_layer_pending_removals);
@@ -1321,6 +1322,11 @@ void Document::update_layout(UpdateLayoutReason reason)
         }
     }
 
+    m_layout_root->for_each_in_inclusive_subtree([&](auto& layout_node) {
+        layout_node.recompute_containing_block({});
+        return TraversalDecision::Continue;
+    });
+
     m_layout_root->for_each_in_inclusive_subtree_of_type<Layout::Box>([&](auto& child) {
         if (auto dom_node = child.dom_node(); dom_node && dom_node->is_element()) {
             child.set_has_size_containment(as<Element>(*dom_node).has_size_containment());
@@ -1337,8 +1343,8 @@ void Document::update_layout(UpdateLayoutReason reason)
     m_layout_root->for_each_in_inclusive_subtree_of_type<Layout::Box>([&](auto& child) {
         if (!child.is_absolutely_positioned())
             return TraversalDecision::Continue;
-        if (auto* containing_block = child.containing_block()) {
-            auto* closest_box_that_establishes_formatting_context = containing_block;
+        if (auto containing_block = child.containing_block()) {
+            auto closest_box_that_establishes_formatting_context = containing_block;
             while (closest_box_that_establishes_formatting_context) {
                 if (closest_box_that_establishes_formatting_context == m_layout_root)
                     break;
@@ -1439,7 +1445,7 @@ void Document::update_layout(UpdateLayoutReason reason)
     if (node_invalidation.rebuild_layout_tree) {
         // We mark layout tree for rebuild starting from parent element to correctly invalidate
         // "display" property change to/from "contents" value.
-        if (auto* parent_element = node.parent_element()) {
+        if (auto parent_element = node.parent_element()) {
             parent_element->set_needs_layout_tree_update(true);
         } else {
             node.set_needs_layout_tree_update(true);
@@ -1778,11 +1784,11 @@ void Document::invalidate_style_of_elements_affected_by_has()
     }
 }
 
-void Document::invalidate_style_for_elements_affected_by_hover_change(Node& old_new_hovered_common_ancestor, GC::Ptr<Node> hovered_node)
+void Document::invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass pseudo_class, auto& element_slot, Node& old_new_common_ancestor, auto node)
 {
-    auto const& hover_rules = style_computer().get_hover_rules();
+    auto const& rules = style_computer().get_pseudo_class_rule_cache(pseudo_class);
 
-    auto& root = old_new_hovered_common_ancestor.root();
+    auto& root = old_new_common_ancestor.root();
     auto shadow_root = is<ShadowRoot>(root) ? static_cast<ShadowRoot const*>(&root) : nullptr;
 
     auto& style_computer = this->style_computer();
@@ -1813,12 +1819,12 @@ void Document::invalidate_style_for_elements_affected_by_hover_change(Node& old_
         return false;
     };
 
-    auto matches_different_set_of_hover_rules_after_hovered_element_change = [&](Element const& element) {
+    auto matches_different_set_of_rules_after_state_change = [&](Element const& element) {
         bool result = false;
-        hover_rules.for_each_matching_rules(element, {}, [&](auto& rules) {
+        rules.for_each_matching_rules(element, {}, [&](auto& rules) {
             for (auto& rule : rules) {
                 bool before = does_rule_match_on_element(element, rule);
-                TemporaryChange change { m_hovered_node, hovered_node };
+                TemporaryChange change { element_slot, node };
                 bool after = does_rule_match_on_element(element, rule);
                 if (before != after) {
                     result = true;
@@ -1830,17 +1836,17 @@ void Document::invalidate_style_for_elements_affected_by_hover_change(Node& old_
         return result;
     };
 
-    Function<void(Node&)> invalidate_hovered_elements_recursively = [&](Node& node) -> void {
+    Function<void(Node&)> invalidate_affected_elements_recursively = [&](Node& node) -> void {
         if (node.is_element()) {
             auto& element = static_cast<Element&>(node);
             style_computer.push_ancestor(element);
-            if (element.affected_by_hover() && matches_different_set_of_hover_rules_after_hovered_element_change(element)) {
+            if (element.affected_by_pseudo_class(pseudo_class) && matches_different_set_of_rules_after_state_change(element)) {
                 element.set_needs_style_update(true);
             }
         }
 
         node.for_each_child([&](auto& child) {
-            invalidate_hovered_elements_recursively(child);
+            invalidate_affected_elements_recursively(child);
             return IterationDecision::Continue;
         });
 
@@ -1848,12 +1854,12 @@ void Document::invalidate_style_for_elements_affected_by_hover_change(Node& old_
             style_computer.pop_ancestor(static_cast<Element&>(node));
     };
 
-    invalidate_hovered_elements_recursively(root);
+    invalidate_affected_elements_recursively(root);
 }
 
-void Document::set_hovered_node(Node* node)
+void Document::set_hovered_node(GC::Ptr<Node> node)
 {
-    if (m_hovered_node.ptr() == node)
+    if (m_hovered_node == node)
         return;
 
     GC::Ptr<Node> old_hovered_node = move(m_hovered_node);
@@ -1867,11 +1873,11 @@ void Document::set_hovered_node(Node* node)
         new_hovered_node_root = node->root();
     if (old_hovered_node_root != new_hovered_node_root) {
         if (old_hovered_node_root)
-            invalidate_style_for_elements_affected_by_hover_change(*old_hovered_node_root, node);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Hover, m_hovered_node, *old_hovered_node_root, node);
         if (new_hovered_node_root)
-            invalidate_style_for_elements_affected_by_hover_change(*new_hovered_node_root, node);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Hover, m_hovered_node, *new_hovered_node_root, node);
     } else {
-        invalidate_style_for_elements_affected_by_hover_change(*common_ancestor, node);
+        invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Hover, m_hovered_node, *common_ancestor, node);
     }
 
     m_hovered_node = node;
@@ -2414,13 +2420,13 @@ String const& Document::compat_mode() const
 // https://html.spec.whatwg.org/multipage/interaction.html#dom-documentorshadowroot-activeelement
 void Document::update_active_element()
 {
-    // 1. Let candidate be the DOM anchor of the focused area of this DocumentOrShadowRoot's node document.
+    // 1. Let candidate be this's node document's focused area's DOM anchor.
     Node* candidate = focused_element();
 
-    // 2. Set candidate to the result of retargeting candidate against this DocumentOrShadowRoot.
+    // 2. Set candidate to the result of retargeting candidate against this.
     candidate = as<Node>(retarget(candidate, this));
 
-    // 3. If candidate's root is not this DocumentOrShadowRoot, then return null.
+    // 3. If candidate's root is not this, then return null.
     if (&candidate->root() != this) {
         set_active_element(nullptr);
         return;
@@ -2448,10 +2454,9 @@ void Document::update_active_element()
 
     // 7. Return null.
     set_active_element(nullptr);
-    return;
 }
 
-void Document::set_focused_element(Element* element)
+void Document::set_focused_element(GC::Ptr<Element> element)
 {
     if (m_focused_element.ptr() == element)
         return;
@@ -2461,10 +2466,32 @@ void Document::set_focused_element(Element* element)
     if (old_focused_element)
         old_focused_element->did_lose_focus();
 
-    m_focused_element = element;
+    auto* common_ancestor = find_common_ancestor(old_focused_element, element);
 
-    if (auto* invalidation_target = find_common_ancestor(old_focused_element, m_focused_element) ?: this)
-        invalidation_target->invalidate_style(StyleInvalidationReason::FocusedElementChange);
+    GC::Ptr<Node> old_focused_node_root = nullptr;
+    GC::Ptr<Node> new_focused_node_root = nullptr;
+    if (old_focused_element)
+        old_focused_node_root = old_focused_element->root();
+    if (element)
+        new_focused_node_root = element->root();
+    if (old_focused_node_root != new_focused_node_root) {
+        if (old_focused_node_root) {
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Focus, m_focused_element, *old_focused_node_root, element);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::FocusWithin, m_focused_element, *old_focused_node_root, element);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::FocusVisible, m_focused_element, *old_focused_node_root, element);
+        }
+        if (new_focused_node_root) {
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Focus, m_focused_element, *new_focused_node_root, element);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::FocusWithin, m_focused_element, *new_focused_node_root, element);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::FocusVisible, m_focused_element, *new_focused_node_root, element);
+        }
+    } else {
+        invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Focus, m_focused_element, *common_ancestor, element);
+        invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::FocusWithin, m_focused_element, *common_ancestor, element);
+        invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::FocusVisible, m_focused_element, *common_ancestor, element);
+    }
+
+    m_focused_element = element;
 
     if (m_focused_element)
         m_focused_element->did_receive_focus();
@@ -2485,31 +2512,67 @@ void Document::set_focused_element(Element* element)
     update_active_element();
 }
 
-void Document::set_active_element(Element* element)
+void Document::set_active_element(GC::Ptr<Element> element)
 {
     if (m_active_element.ptr() == element)
         return;
 
-    GC::Ptr<Node> old_active_element = move(m_active_element);
-    m_active_element = element;
+    auto old_active_element = move(m_active_element);
+    auto* common_ancestor = find_common_ancestor(old_active_element, element);
 
-    if (auto* invalidation_target = find_common_ancestor(old_active_element, m_active_element) ?: this)
-        invalidation_target->invalidate_style(StyleInvalidationReason::TargetElementChange);
+    GC::Ptr<Node> old_active_node_root = nullptr;
+    GC::Ptr<Node> new_active_node_root = nullptr;
+    if (old_active_element)
+        old_active_node_root = old_active_element->root();
+    if (element)
+        new_active_node_root = element->root();
+    if (old_active_node_root != new_active_node_root) {
+        if (old_active_node_root) {
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Active, m_active_element, *old_active_node_root, element);
+        }
+        if (new_active_node_root) {
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Active, m_active_element, *new_active_node_root, element);
+        }
+    } else {
+        invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Active, m_active_element, *common_ancestor, element);
+    }
+
+    m_active_element = element;
 
     if (paintable())
         paintable()->set_needs_display();
 }
 
-void Document::set_target_element(Element* element)
+void Document::set_target_element(GC::Ptr<Element> element)
 {
     if (m_target_element.ptr() == element)
         return;
 
     GC::Ptr<Element> old_target_element = move(m_target_element);
-    m_target_element = element;
 
-    if (auto* invalidation_target = find_common_ancestor(old_target_element, m_target_element) ?: this)
-        invalidation_target->invalidate_style(StyleInvalidationReason::TargetElementChange);
+    auto* common_ancestor = find_common_ancestor(old_target_element, element);
+
+    GC::Ptr<Node> old_target_node_root = nullptr;
+    GC::Ptr<Node> new_target_node_root = nullptr;
+    if (old_target_element)
+        old_target_node_root = old_target_element->root();
+    if (element)
+        new_target_node_root = element->root();
+    if (old_target_node_root != new_target_node_root) {
+        if (old_target_node_root) {
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Target, m_target_element, *old_target_node_root, element);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::TargetWithin, m_target_element, *old_target_node_root, element);
+        }
+        if (new_target_node_root) {
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Target, m_target_element, *new_target_node_root, element);
+            invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::TargetWithin, m_target_element, *new_target_node_root, element);
+        }
+    } else {
+        invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::Target, m_target_element, *common_ancestor, element);
+        invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass::TargetWithin, m_target_element, *common_ancestor, element);
+    }
+
+    m_target_element = element;
 
     if (paintable())
         paintable()->set_needs_display();
@@ -3416,9 +3479,17 @@ DOMImplementation* Document::implementation()
     return m_implementation;
 }
 
+// https://html.spec.whatwg.org/multipage/interaction.html#dom-document-hasfocus
+bool Document::has_focus_for_bindings() const
+{
+    // The Document hasFocus() method steps are to return the result of running the has focus steps given this.
+    return has_focus();
+}
+
+// https://html.spec.whatwg.org/multipage/interaction.html#has-focus-steps
 bool Document::has_focus() const
 {
-    // FIXME: Return whether we actually have focus.
+    // FIXME: Implement this algorithm.
     return true;
 }
 
@@ -3431,10 +3502,7 @@ bool Document::allow_focus() const
     if (is_allowed_to_use_feature(PolicyControlledFeature::FocusWithoutUserActivation))
         return true;
 
-    // FIXME: 2. If any of the following are true:
-    //    - target's relevant global object has transient user activation; or
-    //    - target's node navigable's container, if any, is marked as locked for focus,
-    //    then return true.
+    // FIXME: 2. If target's relevant global object has transient activation, then return true.
 
     // 3. Return false.
     return false;
@@ -3734,7 +3802,7 @@ CSS::StyleSheetList const& Document::style_sheets() const
 GC::Ref<HTML::History> Document::history()
 {
     if (!m_history)
-        m_history = HTML::History::create(realm(), *this);
+        m_history = HTML::History::create(realm());
     return *m_history;
 }
 
@@ -4568,7 +4636,7 @@ void Document::queue_intersection_observer_task()
 
             // 5. Invoke callback with queue as the first argument, observer as the second argument, and observer as the callback this value. If this throws an exception, report the exception.
             // NOTE: This does not follow the spec as written precisely, but this is the same thing we do elsewhere and there is a WPT test that relies on this.
-            (void)WebIDL::invoke_callback(callback, observer.ptr(), WebIDL::ExceptionBehavior::Report, wrapped_queue, observer.ptr());
+            (void)WebIDL::invoke_callback(callback, observer.ptr(), WebIDL::ExceptionBehavior::Report, { { wrapped_queue, observer.ptr() } });
         }
     }));
 }
@@ -4662,8 +4730,8 @@ void Document::run_the_update_intersection_observations_steps(HighResolutionTime
             auto intersection_root_document = intersection_root.visit([](auto& node) -> GC::Ref<Document> {
                 return node->document();
             });
-            if (!(observer->root().has<Empty>() && &target->document() == intersection_root_document.ptr())
-                || !(intersection_root.has<GC::Root<DOM::Element>>() && !target->is_descendant_of(*intersection_root.get<GC::Root<DOM::Element>>()))) {
+            // NOTE: Check if target has a layout node is not in the spec but required to match other browsers.
+            if (target->layout_node() && (!(observer->root().has<Empty>() && &target->document() == intersection_root_document.ptr()) || !(intersection_root.has<GC::Root<DOM::Element>>() && !target->is_descendant_of(*intersection_root.get<GC::Root<DOM::Element>>())))) {
                 // 4. Set targetRect to the DOMRectReadOnly obtained by getting the bounding box for target.
                 target_rect = target->get_bounding_client_rect();
 
@@ -5879,7 +5947,7 @@ void Document::for_each_active_css_style_sheet(Function<void(CSS::CSSStyleSheet&
 
 static Optional<CSS::CSSStyleSheet&> find_style_sheet_with_url(String const& url, CSS::CSSStyleSheet& style_sheet)
 {
-    if (style_sheet.location() == url)
+    if (style_sheet.href() == url)
         return style_sheet;
 
     for (auto& import_rule : style_sheet.import_rules()) {
@@ -5953,9 +6021,7 @@ void Document::register_shadow_root(Badge<DOM::ShadowRoot>, DOM::ShadowRoot& sha
 
 void Document::unregister_shadow_root(Badge<DOM::ShadowRoot>, DOM::ShadowRoot& shadow_root)
 {
-    m_shadow_roots.remove_all_matching([&](auto& item) {
-        return item.ptr() == &shadow_root;
-    });
+    m_shadow_roots.remove(shadow_root);
 }
 
 void Document::for_each_shadow_root(Function<void(DOM::ShadowRoot&)>&& callback)
@@ -5967,12 +6033,12 @@ void Document::for_each_shadow_root(Function<void(DOM::ShadowRoot&)>&& callback)
 void Document::for_each_shadow_root(Function<void(DOM::ShadowRoot&)>&& callback) const
 {
     for (auto& shadow_root : m_shadow_roots)
-        callback(shadow_root);
+        callback(const_cast<ShadowRoot&>(shadow_root));
 }
 
 bool Document::is_decoded_svg() const
 {
-    return is<Web::SVG::SVGDecodedImageData::SVGPageClient>(page().client());
+    return page().client().is_svg_page_client();
 }
 
 // https://drafts.csswg.org/css-position-4/#add-an-element-to-the-top-layer
@@ -6297,8 +6363,9 @@ void Document::invalidate_display_list()
 
 RefPtr<Painting::DisplayList> Document::record_display_list(PaintConfig config)
 {
-    if (m_cached_display_list && m_cached_display_list_paint_config == config)
+    if (m_cached_display_list && m_cached_display_list_paint_config == config) {
         return m_cached_display_list;
+    }
 
     auto display_list = Painting::DisplayList::create();
     Painting::DisplayListRecorder display_list_recorder(display_list);
@@ -6355,7 +6422,6 @@ RefPtr<Painting::DisplayList> Document::record_display_list(PaintConfig config)
     viewport_paintable.paint_all_phases(context);
 
     display_list->set_device_pixels_per_css_pixel(page().client().device_pixels_per_css_pixel());
-    display_list->set_scroll_state(viewport_paintable.scroll_state());
 
     m_cached_display_list = display_list;
     m_cached_display_list_paint_config = config;

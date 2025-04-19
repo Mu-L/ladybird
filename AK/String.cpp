@@ -61,6 +61,36 @@ ErrorOr<String> String::from_utf8(StringView view)
     return result;
 }
 
+ErrorOr<String> String::from_utf16_le(ReadonlyBytes bytes)
+{
+    if (!validate_utf16_le(bytes))
+        return Error::from_string_literal("String::from_utf16_le: Input was not valid UTF-16LE");
+    if (bytes.is_empty())
+        return String {};
+    char16_t const* utf16_data = reinterpret_cast<char16_t const*>(bytes.data());
+    size_t utf16_length = bytes.size() / 2;
+    size_t max_utf8_length = simdutf::utf8_length_from_utf16(utf16_data, utf16_length);
+    Vector<u8> buffer;
+    buffer.resize(max_utf8_length);
+    auto utf8_length = simdutf::convert_utf16le_to_utf8(utf16_data, utf16_length, reinterpret_cast<char*>(buffer.data()));
+    return String::from_utf8_without_validation(ReadonlyBytes { buffer.data(), utf8_length });
+}
+
+ErrorOr<String> String::from_utf16_be(ReadonlyBytes bytes)
+{
+    if (!validate_utf16_be(bytes))
+        return Error::from_string_literal("String::from_utf16_be: Input was not valid UTF-16BE");
+    if (bytes.is_empty())
+        return String {};
+    char16_t const* utf16_data = reinterpret_cast<char16_t const*>(bytes.data());
+    size_t utf16_length = bytes.size() / 2;
+    size_t max_utf8_length = simdutf::utf8_length_from_utf16(utf16_data, utf16_length);
+    Vector<u8> buffer;
+    buffer.resize(max_utf8_length);
+    auto utf8_length = simdutf::convert_utf16be_to_utf8(utf16_data, utf16_length, reinterpret_cast<char*>(buffer.data()));
+    return String::from_utf8_without_validation(ReadonlyBytes { buffer.data(), utf8_length });
+}
+
 ErrorOr<String> String::from_utf16(Utf16View const& utf16)
 {
     if (!utf16.validate())
@@ -70,32 +100,11 @@ ErrorOr<String> String::from_utf16(Utf16View const& utf16)
 
     String result;
 
-    auto utf8_length = [&]() {
-        switch (utf16.endianness()) {
-        case Endianness::Host:
-            return simdutf::utf8_length_from_utf16(utf16.char_data(), utf16.length_in_code_units());
-        case Endianness::Big:
-            return simdutf::utf8_length_from_utf16be(utf16.char_data(), utf16.length_in_code_units());
-        case Endianness::Little:
-            return simdutf::utf8_length_from_utf16le(utf16.char_data(), utf16.length_in_code_units());
-        }
-        VERIFY_NOT_REACHED();
-    }();
+    auto utf8_length = simdutf::utf8_length_from_utf16(utf16.char_data(), utf16.length_in_code_units());
 
     TRY(result.replace_with_new_string(utf8_length, [&](Bytes buffer) -> ErrorOr<void> {
-        [[maybe_unused]] auto result = [&]() {
-            switch (utf16.endianness()) {
-            case Endianness::Host:
-                return simdutf::convert_utf16_to_utf8(utf16.char_data(), utf16.length_in_code_units(), reinterpret_cast<char*>(buffer.data()));
-            case Endianness::Big:
-                return simdutf::convert_utf16be_to_utf8(utf16.char_data(), utf16.length_in_code_units(), reinterpret_cast<char*>(buffer.data()));
-            case Endianness::Little:
-                return simdutf::convert_utf16le_to_utf8(utf16.char_data(), utf16.length_in_code_units(), reinterpret_cast<char*>(buffer.data()));
-            }
-            VERIFY_NOT_REACHED();
-        }();
+        [[maybe_unused]] auto result = simdutf::convert_utf16_to_utf8(utf16.char_data(), utf16.length_in_code_units(), reinterpret_cast<char*>(buffer.data()));
         ASSERT(result == buffer.size());
-
         return {};
     }));
 

@@ -900,7 +900,7 @@ void Window::stop()
 // https://html.spec.whatwg.org/multipage/interaction.html#dom-window-focus
 void Window::focus()
 {
-    // 1. Let current be this Window object's navigable.
+    // 1. Let current be this's navigable.
     auto current = navigable();
 
     // 2. If current is null, then return.
@@ -923,7 +923,7 @@ void Window::focus()
 // https://html.spec.whatwg.org/multipage/interaction.html#dom-window-blur
 void Window::blur()
 {
-    // The blur() method steps are to do nothing.
+    // The Window blur() method steps are to do nothing.
 }
 
 // https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-locationbar
@@ -1190,9 +1190,10 @@ WebIDL::ExceptionOr<void> Window::window_post_message_steps(JS::Value message, W
         // 3. Let source be the WindowProxy object corresponding to incumbentSettings's global object (a Window object).
         auto& source = as<WindowProxy>(incumbent_settings.realm().global_environment().global_this_value());
 
+        TemporaryExecutionContext temporary_execution_context { target_realm, TemporaryExecutionContext::CallbacksEnabled::Yes };
+
         // 4. Let deserializeRecord be StructuredDeserializeWithTransfer(serializeWithTransferResult, targetRealm).
-        auto temporary_execution_context = TemporaryExecutionContext { target_realm, TemporaryExecutionContext::CallbacksEnabled::Yes };
-        auto deserialize_record_or_error = structured_deserialize_with_transfer(vm(), serialize_with_transfer_result);
+        auto deserialize_record_or_error = structured_deserialize_with_transfer(serialize_with_transfer_result, target_realm);
 
         // If this throws an exception, catch it, fire an event named messageerror at targetWindow, using MessageEvent,
         // with the origin attribute initialized to origin and the source attribute initialized to source, and then return.
@@ -1611,7 +1612,7 @@ WebIDL::UnsignedLong Window::request_animation_frame(GC::Ref<WebIDL::CallbackTyp
     // FIXME: Make this fully spec compliant. Currently implements a mix of 'requestAnimationFrame()' and 'run the animation frame callbacks'.
     return animation_frame_callback_driver().add(GC::create_function(heap(), [this, callback](double now) {
         // 3. Invoke callback, passing now as the only argument, and if an exception is thrown, report the exception.
-        auto result = WebIDL::invoke_callback(*callback, {}, JS::Value(now));
+        auto result = WebIDL::invoke_callback(*callback, {}, { { JS::Value(now) } });
         if (result.is_error())
             report_exception(result, realm());
     }));
@@ -1655,7 +1656,7 @@ u32 Window::request_idle_callback(WebIDL::CallbackType& callback, RequestIdleCal
 
     // 4. Push callback to the end of window's list of idle request callbacks, associated with handle.
     auto handler = [callback = GC::make_root(callback)](GC::Ref<RequestIdleCallback::IdleDeadline> deadline) -> JS::Completion {
-        return WebIDL::invoke_callback(*callback, {}, deadline.ptr());
+        return WebIDL::invoke_callback(*callback, {}, { { deadline } });
     };
     m_idle_request_callbacks.append(adopt_ref(*new IdleCallback(move(handler), handle)));
 

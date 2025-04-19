@@ -12,7 +12,7 @@ namespace Web::CSS {
 
 class ShorthandStyleValue final : public StyleValueWithDefaultOperators<ShorthandStyleValue> {
 public:
-    static ValueComparingNonnullRefPtr<ShorthandStyleValue> create(PropertyID shorthand, Vector<PropertyID> sub_properties, Vector<ValueComparingNonnullRefPtr<CSSStyleValue const>> values)
+    static ValueComparingNonnullRefPtr<ShorthandStyleValue const> create(PropertyID shorthand, Vector<PropertyID> sub_properties, Vector<ValueComparingNonnullRefPtr<CSSStyleValue const>> values)
     {
         return adopt_ref(*new ShorthandStyleValue(shorthand, move(sub_properties), move(values)));
     }
@@ -29,6 +29,8 @@ public:
 
 private:
     ShorthandStyleValue(PropertyID shorthand, Vector<PropertyID> sub_properties, Vector<ValueComparingNonnullRefPtr<CSSStyleValue const>> values);
+
+    virtual void set_style_sheet(GC::Ptr<CSSStyleSheet>) override;
 
     struct Properties {
         PropertyID shorthand_property;

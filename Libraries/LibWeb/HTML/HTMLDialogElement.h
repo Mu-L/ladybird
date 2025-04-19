@@ -37,6 +37,10 @@ public:
     virtual Optional<ARIA::Role> default_role() const override { return ARIA::Role::dialog; }
 
     bool is_modal() const { return m_is_modal; }
+    void set_is_modal(bool);
+
+    bool is_valid_invoker_command(String&) override;
+    void invoker_command_steps(DOM::Element&, String&) override;
 
 private:
     HTMLDialogElement(DOM::Document&, DOM::QualifiedName);

@@ -26,6 +26,9 @@ ErrorOr<Utf16Data> utf8_to_utf16(Utf8View const&, Endianness = Endianness::Host)
 ErrorOr<Utf16Data> utf32_to_utf16(Utf32View const&, Endianness = Endianness::Host);
 ErrorOr<void> code_point_to_utf16(Utf16Data&, u32, Endianness = Endianness::Host);
 
+[[nodiscard]] bool validate_utf16_le(ReadonlyBytes);
+[[nodiscard]] bool validate_utf16_be(ReadonlyBytes);
+
 size_t utf16_code_unit_length_from_utf8(StringView);
 
 class Utf16View;
@@ -48,16 +51,14 @@ public:
     size_t length_in_code_units() const;
 
 private:
-    Utf16CodePointIterator(u16 const* ptr, size_t length, Endianness endianness)
+    Utf16CodePointIterator(u16 const* ptr, size_t length)
         : m_ptr(ptr)
         , m_remaining_code_units(length)
-        , m_endianness(endianness)
     {
     }
 
     u16 const* m_ptr { nullptr };
     size_t m_remaining_code_units { 0 };
-    Endianness m_endianness { Endianness::Host };
 };
 
 class Utf16View {
@@ -71,18 +72,16 @@ public:
     Utf16View() = default;
     ~Utf16View() = default;
 
-    explicit Utf16View(ReadonlySpan<u16> code_units, Endianness endianness = Endianness::Host)
+    explicit Utf16View(ReadonlySpan<u16> code_units)
         : m_code_units(code_units)
-        , m_endianness(endianness)
     {
     }
 
     template<size_t Size>
-    Utf16View(char16_t const (&code_units)[Size], Endianness endianness = Endianness::Host)
+    Utf16View(char16_t const (&code_units)[Size])
         : m_code_units(
               reinterpret_cast<u16 const*>(&code_units[0]),
               code_units[Size - 1] == u'\0' ? Size - 1 : Size)
-        , m_endianness(endianness)
     {
     }
 
@@ -101,10 +100,8 @@ public:
     size_t length_in_code_units() const { return m_code_units.size(); }
     size_t length_in_code_points() const;
 
-    Endianness endianness() const { return m_endianness; }
-
-    Utf16CodePointIterator begin() const { return { begin_ptr(), m_code_units.size(), m_endianness }; }
-    Utf16CodePointIterator end() const { return { end_ptr(), 0, m_endianness }; }
+    Utf16CodePointIterator begin() const { return { begin_ptr(), m_code_units.size() }; }
+    Utf16CodePointIterator end() const { return { end_ptr(), 0 }; }
 
     u16 const* data() const { return m_code_units.data(); }
     char16_t const* char_data() const { return reinterpret_cast<char16_t const*>(data()); }
@@ -138,8 +135,7 @@ private:
     size_t calculate_length_in_code_points() const;
 
     ReadonlySpan<u16> m_code_units;
-    [[no_unique_address]] mutable Optional<size_t> m_length_in_code_points;
-    Endianness m_endianness { Endianness::Host };
+    mutable size_t m_length_in_code_points { NumericLimits<size_t>::max() };
 };
 
 }

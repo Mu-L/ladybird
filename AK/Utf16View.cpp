@@ -177,15 +177,15 @@ ErrorOr<String> Utf16View::to_utf8(AllowInvalidCodeUnits allow_invalid_code_unit
 
 size_t Utf16View::length_in_code_points() const
 {
-    if (!m_length_in_code_points.has_value())
+    if (m_length_in_code_points == NumericLimits<size_t>::max())
         m_length_in_code_points = calculate_length_in_code_points();
-    return *m_length_in_code_points;
+    return m_length_in_code_points;
 }
 
 u16 Utf16View::code_unit_at(size_t index) const
 {
     VERIFY(index < length_in_code_units());
-    return host_code_unit(m_code_units[index], m_endianness);
+    return host_code_unit(m_code_units[index], Endianness::Host);
 }
 
 u32 Utf16View::code_point_at(size_t index) const
@@ -296,31 +296,12 @@ bool Utf16View::starts_with(Utf16View const& needle) const
 
 bool Utf16View::validate() const
 {
-    switch (m_endianness) {
-    case Endianness::Host:
-        return simdutf::validate_utf16(char_data(), length_in_code_units());
-    case Endianness::Big:
-        return simdutf::validate_utf16be(char_data(), length_in_code_units());
-    case Endianness::Little:
-        return simdutf::validate_utf16le(char_data(), length_in_code_units());
-    }
-    VERIFY_NOT_REACHED();
+    return simdutf::validate_utf16(char_data(), length_in_code_units());
 }
 
 bool Utf16View::validate(size_t& valid_code_units) const
 {
-    auto result = [&]() {
-        switch (m_endianness) {
-        case Endianness::Host:
-            return simdutf::validate_utf16_with_errors(char_data(), length_in_code_units());
-        case Endianness::Big:
-            return simdutf::validate_utf16be_with_errors(char_data(), length_in_code_units());
-        case Endianness::Little:
-            return simdutf::validate_utf16le_with_errors(char_data(), length_in_code_units());
-        }
-        VERIFY_NOT_REACHED();
-    }();
-
+    auto result = simdutf::validate_utf16_with_errors(char_data(), length_in_code_units());
     valid_code_units = result.count;
     return result.error == simdutf::SUCCESS;
 }
@@ -330,16 +311,8 @@ size_t Utf16View::calculate_length_in_code_points() const
     // FIXME: simdutf's code point length method assumes valid UTF-16, whereas Utf16View uses U+FFFD as a replacement
     //        for invalid code points. If we change Utf16View to only accept valid encodings as an invariant, we can
     //        remove this branch.
-    if (validate()) [[likely]] {
-        switch (m_endianness) {
-        case Endianness::Host:
-            return simdutf::count_utf16(char_data(), length_in_code_units());
-        case Endianness::Big:
-            return simdutf::count_utf16be(char_data(), length_in_code_units());
-        case Endianness::Little:
-            return simdutf::count_utf16le(char_data(), length_in_code_units());
-        }
-    }
+    if (validate()) [[likely]]
+        return simdutf::count_utf16(char_data(), length_in_code_units());
 
     size_t code_points = 0;
     for ([[maybe_unused]] auto code_point : *this)
@@ -397,11 +370,11 @@ u32 Utf16CodePointIterator::operator*() const
     //    W2 as its 10 low-order bits.
     // 5) Add 0x10000 to U' to obtain the character value U. Terminate.
 
-    auto code_unit = host_code_unit(*m_ptr, m_endianness);
+    auto code_unit = host_code_unit(*m_ptr, Endianness::Host);
 
     if (Utf16View::is_high_surrogate(code_unit)) {
         if (m_remaining_code_units > 1) {
-            auto next_code_unit = host_code_unit(*(m_ptr + 1), m_endianness);
+            auto next_code_unit = host_code_unit(*(m_ptr + 1), Endianness::Host);
 
             if (Utf16View::is_low_surrogate(next_code_unit))
                 return Utf16View::decode_surrogate_pair(code_unit, next_code_unit);
@@ -419,6 +392,16 @@ u32 Utf16CodePointIterator::operator*() const
 size_t Utf16CodePointIterator::length_in_code_units() const
 {
     return *(*this) < first_supplementary_plane_code_point ? 1 : 2;
+}
+
+bool validate_utf16_le(ReadonlyBytes bytes)
+{
+    return simdutf::validate_utf16le(reinterpret_cast<char16_t const*>(bytes.data()), bytes.size() / 2);
+}
+
+bool validate_utf16_be(ReadonlyBytes bytes)
+{
+    return simdutf::validate_utf16be(reinterpret_cast<char16_t const*>(bytes.data()), bytes.size() / 2);
 }
 
 }

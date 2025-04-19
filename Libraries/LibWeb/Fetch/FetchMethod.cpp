@@ -19,7 +19,7 @@
 #include <LibWeb/Fetch/Request.h>
 #include <LibWeb/Fetch/Response.h>
 #include <LibWeb/HTML/Scripting/TemporaryExecutionContext.h>
-#include <LibWeb/Streams/AbstractOperations.h>
+#include <LibWeb/Streams/ReadableStreamOperations.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
 #include <LibWeb/WebIDL/Promise.h>
 
@@ -130,7 +130,7 @@ GC::Ref<WebIDL::Promise> fetch(JS::VM& vm, RequestInfo const& input, RequestInit
             }))));
 
     // 11. Add the following abort steps to requestObject’s signal:
-    request_object->signal()->add_abort_algorithm([locally_aborted, request, controller_holder, promise_capability, request_object, response_object, &relevant_realm] {
+    (void)request_object->signal()->add_abort_algorithm([locally_aborted, request, controller_holder, promise_capability, request_object, response_object, &relevant_realm] {
         dbgln_if(WEB_FETCH_DEBUG, "Fetch: Request object signal's abort algorithm called");
 
         // 1. Set locallyAborted to true.

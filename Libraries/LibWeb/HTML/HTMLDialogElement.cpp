@@ -223,7 +223,7 @@ WebIDL::ExceptionOr<void> HTMLDialogElement::show_a_modal_dialog(HTMLDialogEleme
     TRY(subject.set_attribute(AttributeNames::open, {}));
 
     // 12. Set is modal of subject to true.
-    subject.m_is_modal = true;
+    subject.set_is_modal(true);
 
     // FIXME: 13. Assert: subject's node document's open dialogs list does not contain subject.
     // FIXME: 14. Add subject to subject's node document's open dialogs list.
@@ -338,7 +338,7 @@ void HTMLDialogElement::close_the_dialog(Optional<String> result)
     // FIXME: 7. Let wasModal be the value of subject's is modal flag.
 
     // 8. Set the is modal flag of subject to false.
-    m_is_modal = false;
+    set_is_modal(false);
 
     // FIXME: 9. Remove subject from subject's node document's open dialogs list.
 
@@ -433,6 +433,49 @@ void HTMLDialogElement::run_dialog_focusing_steps()
 
     // FIXME: 9. Empty topDocument's autofocus candidates.
     // FIXME: 10. Set topDocument's autofocus processed flag to true.
+}
+
+void HTMLDialogElement::set_is_modal(bool is_modal)
+{
+    if (m_is_modal == is_modal)
+        return;
+    m_is_modal = is_modal;
+    invalidate_style(DOM::StyleInvalidationReason::NodeRemove);
+}
+
+// https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element:is-valid-invoker-command-steps
+bool HTMLDialogElement::is_valid_invoker_command(String& command)
+{
+    // 1. If command is in the Close state or in the Show Modal state, then return true.
+    if (command == "close" || command == "show-modal")
+        return true;
+
+    // 2. Return false.
+    return false;
+}
+
+// https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element:invoker-command-steps
+void HTMLDialogElement::invoker_command_steps(DOM::Element& invoker, String& command)
+{
+    // 1. If element is in the popover showing state, then return.
+    if (popover_visibility_state() == PopoverVisibilityState::Showing) {
+        return;
+    }
+
+    // 2. If command is in the Close state and element has an open attribute:
+    if (command == "close" && has_attribute(AttributeNames::open)) {
+        // 1. Let value be invoker's value.
+        //    FIXME: This assumes invoker is a button.
+        auto value = invoker.get_attribute(AttributeNames::value);
+
+        // 2. Close the dialog element with value.
+        close_the_dialog(value);
+    }
+
+    // 3. If command is the Show Modal state and element does not have an open attribute, then show a modal dialog given element.
+    if (command == "show-modal" && !has_attribute(AttributeNames::open)) {
+        MUST(show_a_modal_dialog(*this));
+    }
 }
 
 }

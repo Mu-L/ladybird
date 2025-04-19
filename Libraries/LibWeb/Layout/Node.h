@@ -48,6 +48,7 @@ public:
     bool is_generated() const { return m_generated_for.has_value(); }
     bool is_generated_for_before_pseudo_element() const { return m_generated_for == CSS::GeneratedPseudoElement::Before; }
     bool is_generated_for_after_pseudo_element() const { return m_generated_for == CSS::GeneratedPseudoElement::After; }
+    bool is_generated_for_backdrop_pseudo_element() const { return m_generated_for == CSS::GeneratedPseudoElement::Backdrop; }
     void set_generated_for(CSS::GeneratedPseudoElement type, DOM::Element& element)
     {
         m_generated_for = type;
@@ -100,6 +101,7 @@ public:
     virtual bool is_svg_geometry_box() const { return false; }
     virtual bool is_svg_mask_box() const { return false; }
     virtual bool is_svg_svg_box() const { return false; }
+    virtual bool is_svg_graphics_box() const { return false; }
     virtual bool is_label() const { return false; }
     virtual bool is_replaced_box() const { return false; }
     virtual bool is_list_item_box() const { return false; }
@@ -107,6 +109,7 @@ public:
     virtual bool is_fieldset_box() const { return false; }
     virtual bool is_legend_box() const { return false; }
     virtual bool is_table_wrapper() const { return false; }
+    virtual bool is_node_with_style() const { return false; }
     virtual bool is_node_with_style_and_box_model_metrics() const { return false; }
 
     template<typename T>
@@ -124,8 +127,10 @@ public:
     bool is_grid_item() const { return m_is_grid_item; }
     void set_grid_item(bool b) { m_is_grid_item = b; }
 
-    Box const* containing_block() const;
-    Box* containing_block() { return const_cast<Box*>(const_cast<Node const*>(this)->containing_block()); }
+    [[nodiscard]] GC::Ptr<Box const> containing_block() const { return m_containing_block; }
+    [[nodiscard]] GC::Ptr<Box> containing_block() { return m_containing_block; }
+
+    void recompute_containing_block(Badge<DOM::Document>);
 
     [[nodiscard]] Box const* static_position_containing_block() const;
     [[nodiscard]] Box* static_position_containing_block() { return const_cast<Box*>(const_cast<Node const*>(this)->static_position_containing_block()); }
@@ -197,6 +202,8 @@ private:
     GC::Ref<DOM::Node> m_dom_node;
     PaintableList m_paintable;
 
+    GC::Ptr<Box> m_containing_block;
+
     GC::Ptr<DOM::Element> m_pseudo_element_generator;
 
     bool m_anonymous { false };
@@ -244,12 +251,17 @@ protected:
     NodeWithStyle(DOM::Document&, DOM::Node*, NonnullOwnPtr<CSS::ComputedValues>);
 
 private:
+    virtual bool is_node_with_style() const final { return true; }
+
     void reset_table_box_computed_values_used_by_wrapper_to_init_values();
     void propagate_style_to_anonymous_wrappers();
 
     NonnullOwnPtr<CSS::ComputedValues> m_computed_values;
     RefPtr<CSS::AbstractImageStyleValue const> m_list_style_image;
 };
+
+template<>
+inline bool Node::fast_is<NodeWithStyle>() const { return is_node_with_style(); }
 
 class NodeWithStyleAndBoxModelMetrics : public NodeWithStyle {
     GC_CELL(NodeWithStyleAndBoxModelMetrics, NodeWithStyle);

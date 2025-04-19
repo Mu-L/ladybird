@@ -183,7 +183,7 @@ void run_dump_test(HeadlessWebView& view, Test& test, URL::URL const& url, int t
             return TestResult::Pass;
         }
 
-        auto const color_output = isatty(STDOUT_FILENO) ? Diff::ColorOutput::Yes : Diff::ColorOutput::No;
+        auto const color_output = TRY(Core::System::isatty(STDOUT_FILENO)) ? Diff::ColorOutput::Yes : Diff::ColorOutput::No;
 
         if (color_output == Diff::ColorOutput::Yes)
             outln("\n\033[33;1mTest failed\033[0m: {}", url);
@@ -328,7 +328,7 @@ static void run_ref_test(HeadlessWebView& view, Test& test, URL::URL const& url,
         if (Application::the().dump_failed_ref_tests) {
             warnln("\033[33;1mRef test {} failed; dumping screenshots\033[0m", test.relative_path);
 
-            auto dump_screenshot = [&](Gfx::Bitmap& bitmap, StringView path) -> ErrorOr<void> {
+            auto dump_screenshot = [&](Gfx::Bitmap const& bitmap, StringView path) -> ErrorOr<void> {
                 auto screenshot_file = TRY(Core::File::open(path, Core::File::OpenMode::Write));
                 auto encoded_data = TRY(Gfx::PNGWriter::encode(bitmap));
                 TRY(screenshot_file->write_until_depleted(encoded_data));
@@ -375,13 +375,13 @@ static void run_ref_test(HeadlessWebView& view, Test& test, URL::URL const& url,
             } else {
                 test.ref_test_expectation_type = RefTestExpectationType::Match;
             }
-            view.take_screenshot()->when_resolved([&view, &test, on_test_complete = move(on_test_complete)](RefPtr<Gfx::Bitmap> screenshot) {
+            view.take_screenshot()->when_resolved([&view, &test, on_test_complete = move(on_test_complete)](RefPtr<Gfx::Bitmap const> screenshot) {
                 test.expectation_screenshot = move(screenshot);
                 view.reset_zoom();
                 on_test_complete();
             });
         } else {
-            view.take_screenshot()->when_resolved([&view, &test](RefPtr<Gfx::Bitmap> screenshot) {
+            view.take_screenshot()->when_resolved([&view, &test](RefPtr<Gfx::Bitmap const> screenshot) {
                 test.actual_screenshot = move(screenshot);
                 view.reset_zoom();
                 view.debug_request("load-reference-page");
@@ -422,7 +422,7 @@ static void run_test(HeadlessWebView& view, Test& test, Application& app)
     view.on_test_finish = {};
 
     promise->when_resolved([&view, &test, &app](auto) {
-        auto url = URL::create_with_file_scheme(MUST(FileSystem::real_path(test.input_path)));
+        auto url = URL::create_with_file_scheme(MUST(FileSystem::real_path(test.input_path))).release_value();
 
         switch (test.mode) {
         case TestMode::Crash:
@@ -558,7 +558,7 @@ ErrorOr<void> run_tests(Core::AnonymousBuffer const& theme, Web::DevicePixelSize
     bool all_tests_ok = true;
 
     // Keep clearing and reusing the same line if stdout is a TTY.
-    bool log_on_one_line = app.verbosity < Application::VERBOSITY_LEVEL_LOG_TEST_DURATION && isatty(STDOUT_FILENO) == 1;
+    bool log_on_one_line = app.verbosity < Application::VERBOSITY_LEVEL_LOG_TEST_DURATION && TRY(Core::System::isatty(STDOUT_FILENO));
     outln("Running {} tests...", tests.size());
 
     auto all_tests_complete = Core::Promise<Empty>::construct();

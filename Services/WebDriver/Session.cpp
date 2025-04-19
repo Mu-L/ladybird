@@ -130,7 +130,7 @@ Session::~Session() = default;
 
 ErrorOr<NonnullRefPtr<Session>, Web::WebDriver::Error> Session::find_session(StringView session_id, Web::WebDriver::SessionFlags session_flags, AllowInvalidWindowHandle allow_invalid_window_handle)
 {
-    auto const& sessions = has_flag(session_flags, Web::WebDriver::SessionFlags::Http) ? s_http_sessions : s_sessions;
+    auto& sessions = has_flag(session_flags, Web::WebDriver::SessionFlags::Http) ? s_http_sessions : s_sessions;
 
     if (auto session = sessions.get(session_id); session.has_value()) {
         if (allow_invalid_window_handle == AllowInvalidWindowHandle::No)
@@ -206,7 +206,7 @@ ErrorOr<NonnullRefPtr<Core::LocalServer>> Session::create_server(NonnullRefPtr<S
     server->listen(*m_web_content_socket_path);
 
     server->on_accept = [this, promise](auto client_socket) {
-        auto maybe_connection = adopt_nonnull_ref_or_enomem(new (nothrow) WebContentConnection(IPC::Transport(move(client_socket))));
+        auto maybe_connection = adopt_nonnull_ref_or_enomem(new (nothrow) WebContentConnection(make<IPC::Transport>(move(client_socket))));
         if (maybe_connection.is_error()) {
             promise->resolve(maybe_connection.release_error());
             return;

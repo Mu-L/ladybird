@@ -280,7 +280,7 @@ HTMLLinkElement::LinkProcessingOptions HTMLLinkElement::create_link_options()
     options.policy_container = document.policy_container();
     // document                         document
     options.document = &document;
-    // FIXME: cryptographic nonce metadata     The current value of el's [[CryptographicNonce]] internal slot
+    // FIXME: cryptographic nonce metadata     the current value of el's [[CryptographicNonce]] internal slot
     // fetch priority                   the state of el's fetchpriority content attribute
     options.fetch_priority = Fetch::Infrastructure::request_priority_from_string(get_attribute_value(HTML::AttributeNames::fetchpriority)).value_or(Fetch::Infrastructure::Request::Priority::Auto);
 
@@ -486,28 +486,18 @@ void HTMLLinkElement::process_stylesheet_resource(bool success, Fetch::Infrastru
                 dbgln("Style sheet {} claimed to be '{}' but decoding failed", response.url().value_or(URL::URL()), encoding);
                 dispatch_event(*DOM::Event::create(realm(), HTML::EventNames::error));
             } else {
-                auto const decoded_string = maybe_decoded_string.release_value();
-                m_loaded_style_sheet = parse_css_stylesheet(CSS::Parser::ParsingParams(document(), *response.url()), decoded_string);
-
-                if (m_loaded_style_sheet) {
-                    Optional<String> location;
-                    if (!response.url_list().is_empty())
-                        location = response.url_list().first().to_string();
-
-                    document_or_shadow_root_style_sheets().create_a_css_style_sheet(
-                        "text/css"_string,
-                        this,
-                        attribute(HTML::AttributeNames::media).value_or({}),
-                        in_a_document_tree() ? attribute(HTML::AttributeNames::title).value_or({}) : String {},
-                        m_relationship & Relationship::Alternate && !m_explicitly_enabled,
-                        true,
-                        move(location),
-                        nullptr,
-                        nullptr,
-                        *m_loaded_style_sheet);
-                } else {
-                    dbgln_if(CSS_LOADER_DEBUG, "HTMLLinkElement: Failed to parse stylesheet: {}", resource()->url());
-                }
+                VERIFY(!response.url_list().is_empty());
+                m_loaded_style_sheet = document_or_shadow_root_style_sheets().create_a_css_style_sheet(
+                    maybe_decoded_string.release_value(),
+                    "text/css"_string,
+                    this,
+                    attribute(HTML::AttributeNames::media).value_or({}),
+                    in_a_document_tree() ? attribute(HTML::AttributeNames::title).value_or({}) : String {},
+                    (m_relationship & Relationship::Alternate && !m_explicitly_enabled) ? CSS::StyleSheetList::Alternate::Yes : CSS::StyleSheetList::Alternate::No,
+                    CSS::StyleSheetList::OriginClean::Yes,
+                    response.url_list().first(),
+                    nullptr,
+                    nullptr);
 
                 // 2. Fire an event named load at el.
                 dispatch_event(*DOM::Event::create(realm(), HTML::EventNames::load));
@@ -620,7 +610,7 @@ bool HTMLLinkElement::load_favicon_and_use_if_window_is_active()
         return false;
 
     // FIXME: Refactor the caller(s) to handle the async nature of image loading
-    auto promise = decode_favicon(resource()->encoded_data(), resource()->url(), document());
+    auto promise = decode_favicon(resource()->encoded_data(), *resource()->url(), document());
     auto result = promise->await();
     return !result.is_error();
 }

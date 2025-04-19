@@ -14,7 +14,6 @@
 #include <AK/COWVector.h>
 #include <AK/FlyString.h>
 #include <AK/MemMem.h>
-#include <AK/RedBlackTree.h>
 #include <AK/StringBuilder.h>
 #include <AK/StringView.h>
 #include <AK/Utf16View.h>
@@ -29,11 +28,6 @@ class RegexStringView {
 public:
     RegexStringView() = default;
 
-    RegexStringView(ByteString const& string)
-        : m_view(string.view())
-    {
-    }
-
     RegexStringView(String const& string)
         : m_view(string.bytes_as_string_view())
     {
@@ -44,47 +38,16 @@ public:
     {
     }
 
-    RegexStringView(Utf32View view)
-        : m_view(view)
-    {
-    }
-
     RegexStringView(Utf16View view)
         : m_view(view)
     {
     }
 
-    RegexStringView(Utf8View view)
-        : m_view(view)
-    {
-    }
-
-    RegexStringView(ByteString&&) = delete;
     RegexStringView(String&&) = delete;
-
-    bool is_string_view() const
-    {
-        return m_view.has<StringView>();
-    }
-
-    StringView string_view() const
-    {
-        return m_view.get<StringView>();
-    }
-
-    Utf32View const& u32_view() const
-    {
-        return m_view.get<Utf32View>();
-    }
 
     Utf16View const& u16_view() const
     {
         return m_view.get<Utf16View>();
-    }
-
-    Utf8View const& u8_view() const
-    {
-        return m_view.get<Utf8View>();
     }
 
     bool unicode() const { return m_unicode; }
@@ -115,14 +78,12 @@ public:
     {
         return m_view.visit(
             [](Utf16View const& view) { return view.length_in_code_units(); },
-            [](Utf8View const& view) { return view.byte_length(); },
             [](auto const& view) { return view.length(); });
     }
 
     size_t length_of_code_point(u32 code_point) const
     {
         return m_view.visit(
-            [](Utf32View const&) { return 1; },
             [&](Utf16View const&) {
                 if (code_point < 0x10000)
                     return 1;
@@ -159,9 +120,6 @@ public:
                 optional_string_storage = builder.to_byte_string();
                 return RegexStringView { T { *optional_string_storage } };
             },
-            [&](Utf32View) {
-                return RegexStringView { Utf32View { data.data(), data.size() } };
-            },
             [&](Utf16View) {
                 optional_utf16_storage = AK::utf32_to_utf16(Utf32View { data.data(), data.size() }).release_value_but_fixme_should_propagate_errors();
                 return RegexStringView { Utf16View { optional_utf16_storage } };
@@ -181,24 +139,6 @@ public:
                     new_views.empend(view);
                 return new_views;
             },
-            [](Utf32View view) {
-                if (view.is_empty())
-                    return Vector<RegexStringView> { view };
-
-                Vector<RegexStringView> views;
-                u32 newline = '\n';
-                while (!view.is_empty()) {
-                    auto position = AK::memmem_optional(view.code_points(), view.length() * sizeof(u32), &newline, sizeof(u32));
-                    if (!position.has_value())
-                        break;
-                    auto offset = position.value() / sizeof(u32);
-                    views.empend(view.substring_view(0, offset));
-                    view = view.substring_view(offset + 1, view.length() - offset - 1);
-                }
-                if (!view.is_empty())
-                    views.empend(view);
-                return views;
-            },
             [](Utf16View view) {
                 if (view.is_empty())
                     return Vector<RegexStringView> { view };
@@ -216,34 +156,6 @@ public:
                 if (!view.is_empty())
                     views.empend(view);
                 return views;
-            },
-            [](Utf8View const& view) {
-                if (view.is_empty())
-                    return Vector<RegexStringView> { view };
-
-                Vector<RegexStringView> views;
-                auto it = view.begin();
-                auto previous_newline_position_it = it;
-                for (;;) {
-                    if (*it == '\n') {
-                        auto previous_offset = view.byte_offset_of(previous_newline_position_it);
-                        auto new_offset = view.byte_offset_of(it);
-                        auto slice = view.substring_view(previous_offset, new_offset - previous_offset);
-                        views.empend(slice);
-                        ++it;
-                        previous_newline_position_it = it;
-                    }
-                    if (it.done())
-                        break;
-                    ++it;
-                }
-                if (it != previous_newline_position_it) {
-                    auto previous_offset = view.byte_offset_of(previous_newline_position_it);
-                    auto new_offset = view.byte_offset_of(it);
-                    auto slice = view.substring_view(previous_offset, new_offset - previous_offset);
-                    views.empend(slice);
-                }
-                return views;
             });
     }
 
@@ -252,8 +164,7 @@ public:
         if (unicode()) {
             auto view = m_view.visit(
                 [&](auto view) { return RegexStringView { view.substring_view(offset, length) }; },
-                [&](Utf16View const& view) { return RegexStringView { view.unicode_substring_view(offset, length) }; },
-                [&](Utf8View const& view) { return RegexStringView { view.unicode_substring_view(offset, length) }; });
+                [&](Utf16View const& view) { return RegexStringView { view.unicode_substring_view(offset, length) }; });
 
             view.set_unicode(unicode());
             return view;
@@ -302,13 +213,7 @@ public:
                     return ch;
                 }
             },
-            [&](Utf32View const& view) -> u32 { return view[index]; },
-            [&](Utf16View const& view) -> u32 { return view.code_point_at(index); },
-            [&](Utf8View const& view) -> u32 {
-                auto it = view.iterator_at_byte_offset(index);
-                VERIFY(it != view.end());
-                return *it;
-            });
+            [&](Utf16View const& view) -> u32 { return view.code_point_at(index); });
     }
 
     u32 code_unit_at(size_t code_unit_index) const
@@ -325,13 +230,7 @@ public:
                     return ch;
                 }
             },
-            [&](Utf32View const& view) -> u32 { return view[code_unit_index]; },
-            [&](Utf16View const& view) -> u32 { return view.code_unit_at(code_unit_index); },
-            [&](Utf8View const& view) -> u32 {
-                auto it = view.iterator_at_byte_offset(code_unit_index);
-                VERIFY(it != view.end());
-                return *it;
-            });
+            [&](Utf16View const& view) -> u32 { return view.code_unit_at(code_unit_index); });
     }
 
     size_t code_unit_offset_of(size_t code_point_index) const
@@ -341,69 +240,30 @@ public:
                 Utf8View utf8_view { view };
                 return utf8_view.byte_offset_of(code_point_index);
             },
-            [&](Utf32View const&) -> u32 { return code_point_index; },
             [&](Utf16View const& view) -> u32 {
                 return view.code_unit_offset_of(code_point_index);
-            },
-            [&](Utf8View const& view) -> u32 {
-                return view.byte_offset_of(code_point_index);
             });
     }
 
     bool operator==(char const* cstring) const
     {
         return m_view.visit(
-            [&](Utf32View) { return to_byte_string() == cstring; },
             [&](Utf16View) { return to_byte_string() == cstring; },
-            [&](Utf8View const& view) { return view.as_string() == cstring; },
             [&](StringView view) { return view == cstring; });
-    }
-
-    bool operator==(ByteString const& string) const
-    {
-        return m_view.visit(
-            [&](Utf32View) { return to_byte_string() == string; },
-            [&](Utf16View) { return to_byte_string() == string; },
-            [&](Utf8View const& view) { return view.as_string() == string; },
-            [&](StringView view) { return view == string; });
     }
 
     bool operator==(StringView string) const
     {
         return m_view.visit(
-            [&](Utf32View) { return to_byte_string() == string; },
             [&](Utf16View) { return to_byte_string() == string; },
-            [&](Utf8View const& view) { return view.as_string() == string; },
             [&](StringView view) { return view == string; });
-    }
-
-    bool operator==(Utf32View const& other) const
-    {
-        return m_view.visit(
-            [&](Utf32View view) {
-                return view.length() == other.length() && __builtin_memcmp(view.code_points(), other.code_points(), view.length() * sizeof(u32)) == 0;
-            },
-            [&](Utf16View) { return to_byte_string() == RegexStringView { other }.to_byte_string(); },
-            [&](Utf8View const& view) { return view.as_string() == RegexStringView { other }.to_byte_string(); },
-            [&](StringView view) { return view == RegexStringView { other }.to_byte_string(); });
     }
 
     bool operator==(Utf16View const& other) const
     {
         return m_view.visit(
-            [&](Utf32View) { return to_byte_string() == RegexStringView { other }.to_byte_string(); },
             [&](Utf16View const& view) { return view == other; },
-            [&](Utf8View const& view) { return view.as_string() == RegexStringView { other }.to_byte_string(); },
             [&](StringView view) { return view == RegexStringView { other }.to_byte_string(); });
-    }
-
-    bool operator==(Utf8View const& other) const
-    {
-        return m_view.visit(
-            [&](Utf32View) { return to_byte_string() == other.as_string(); },
-            [&](Utf16View) { return to_byte_string() == other.as_string(); },
-            [&](Utf8View const& view) { return view.as_string() == other.as_string(); },
-            [&](StringView view) { return other.as_string() == view; });
     }
 
     bool equals(RegexStringView other) const
@@ -431,54 +291,18 @@ public:
     bool starts_with(StringView str) const
     {
         return m_view.visit(
-            [&](Utf32View) -> bool {
-                TODO();
-            },
             [&](Utf16View) -> bool {
                 TODO();
             },
-            [&](Utf8View const& view) { return view.as_string().starts_with(str); },
             [&](StringView view) { return view.starts_with(str); });
     }
 
-    bool starts_with(Utf32View const& str) const
-    {
-        return m_view.visit(
-            [&](Utf32View view) -> bool {
-                if (str.length() > view.length())
-                    return false;
-                if (str.length() == view.length())
-                    return operator==(str);
-                for (size_t i = 0; i < str.length(); ++i) {
-                    if (str.at(i) != view.at(i))
-                        return false;
-                }
-                return true;
-            },
-            [&](Utf16View) -> bool { TODO(); },
-            [&](Utf8View const& view) {
-                auto it = view.begin();
-                for (auto code_point : str) {
-                    if (it.done())
-                        return false;
-                    if (code_point != *it)
-                        return false;
-                    ++it;
-                }
-                return true;
-            },
-            [&](StringView) -> bool { TODO(); });
-    }
-
 private:
-    Variant<StringView, Utf8View, Utf16View, Utf32View> m_view { StringView {} };
-    bool m_unicode { false };
+    [[no_unique_address]] Variant<StringView, Utf16View> m_view { StringView {} };
+    [[no_unique_address]] bool m_unicode { false };
 };
 
 class Match final {
-private:
-    Optional<FlyString> string;
-
 public:
     Match() = default;
     ~Match() = default;
@@ -492,18 +316,9 @@ public:
     {
     }
 
-    Match(String string_, size_t const line_, size_t const column_, size_t const global_offset_)
-        : string(move(string_))
-        , view(string.value().bytes_as_string_view())
-        , line(line_)
-        , column(column_)
-        , global_offset(global_offset_)
-    {
-    }
-
-    Match(RegexStringView const view_, StringView capture_group_name_, size_t const line_, size_t const column_, size_t const global_offset_)
+    Match(RegexStringView const view_, size_t capture_group_name_, size_t const line_, size_t const column_, size_t const global_offset_)
         : view(view_)
-        , capture_group_name(MUST(FlyString::from_utf8(capture_group_name_)))
+        , capture_group_name(capture_group_name_)
         , line(line_)
         , column(column_)
         , global_offset(global_offset_)
@@ -514,7 +329,7 @@ public:
     void reset()
     {
         view = view.typed_null_view();
-        capture_group_name.clear();
+        capture_group_name = -1;
         line = 0;
         column = 0;
         global_offset = 0;
@@ -522,7 +337,10 @@ public:
     }
 
     RegexStringView view {};
-    Optional<FlyString> capture_group_name {};
+
+    // This is a string table index. -1 if none. Not using Optional to keep the struct trivially copyable.
+    ssize_t capture_group_name { -1 };
+
     size_t line { 0 };
     size_t column { 0 };
     size_t global_offset { 0 };
@@ -551,6 +369,7 @@ struct MatchInput {
 };
 
 struct MatchState {
+    size_t capture_group_count;
     size_t string_position_before_match { 0 };
     size_t string_position { 0 };
     size_t string_position_in_code_units { 0 };
@@ -559,9 +378,37 @@ struct MatchState {
     size_t forks_since_last_save { 0 };
     Optional<size_t> initiating_fork;
     COWVector<Match> matches;
-    COWVector<Vector<Match>> capture_group_matches;
+    COWVector<Match> flat_capture_group_matches; // Vector<Vector<Match>> indexed by match index, then by capture group id; flattened for performance
     COWVector<u64> repetition_marks;
     Vector<u64, 64> checkpoints;
+
+    explicit MatchState(size_t capture_group_count)
+        : capture_group_count(capture_group_count)
+    {
+    }
+
+    MatchState(MatchState const&) = default;
+    MatchState(MatchState&&) = default;
+
+    MatchState& operator=(MatchState const&) = default;
+    MatchState& operator=(MatchState&&) = default;
+
+    static MatchState only_for_enumeration() { return MatchState { 0 }; }
+
+    size_t capture_group_matches_size() const
+    {
+        return flat_capture_group_matches.size() / capture_group_count;
+    }
+
+    Span<Match const> capture_group_matches(size_t match_index) const
+    {
+        return flat_capture_group_matches.span().slice(match_index * capture_group_count, capture_group_count);
+    }
+
+    Span<Match> mutable_capture_group_matches(size_t match_index)
+    {
+        return flat_capture_group_matches.mutable_span().slice(match_index * capture_group_count, capture_group_count);
+    }
 
     // For size_t in {0..100}, ips in {0..500} and repetitions in {0..30}, there are zero collisions.
     // For the full range, zero collisions were found in 8 million random samples.
@@ -571,7 +418,8 @@ struct MatchState {
         auto combine = [&hash](auto value) {
             hash ^= value + 0x9e3779b97f4a7c15 + (hash << 6) + (hash >> 2);
         };
-        auto combine_vector = [&hash](auto const& vector) {
+        auto combine_vector = [&hash](auto const& vector, auto tag) {
+            hash ^= tag * (vector.size() + 1);
             for (auto& value : vector) {
                 hash ^= value;
                 hash *= 0x100000001b3;
@@ -584,8 +432,8 @@ struct MatchState {
         combine(instruction_position);
         combine(fork_at_position);
         combine(initiating_fork.value_or(0) + initiating_fork.has_value());
-        combine_vector(repetition_marks);
-        combine_vector(checkpoints);
+        combine_vector(repetition_marks, 0xbeefbeefbeefbeef);
+        combine_vector(checkpoints, 0xfacefacefaceface);
 
         return hash;
     }
@@ -602,4 +450,9 @@ struct AK::Formatter<regex::RegexStringView> : Formatter<StringView> {
         auto string = value.to_byte_string();
         return Formatter<StringView>::format(builder, string);
     }
+};
+
+template<>
+struct AK::Traits<regex::Match> : public AK::DefaultTraits<regex::Match> {
+    constexpr static bool is_trivial() { return true; }
 };

@@ -22,6 +22,10 @@
 #include <LibWebSocket/Message.h>
 #include <RequestServer/ConnectionFromClient.h>
 #include <RequestServer/RequestClientEndpoint.h>
+#ifdef AK_OS_WINDOWS
+// needed because curl.h includes winsock2.h
+#    include <AK/Windows.h>
+#endif
 #include <curl/curl.h>
 
 namespace RequestServer {
@@ -264,7 +268,7 @@ int ConnectionFromClient::on_timeout_callback(void*, long timeout_ms, void* user
     return 0;
 }
 
-ConnectionFromClient::ConnectionFromClient(IPC::Transport transport)
+ConnectionFromClient::ConnectionFromClient(NonnullOwnPtr<IPC::Transport> transport)
     : IPC::ConnectionFromClient<RequestClientEndpoint, RequestServerEndpoint>(*this, move(transport), s_client_ids.allocate())
     , m_resolver(default_resolver())
 {
@@ -318,7 +322,7 @@ Messages::RequestServer::InitTransportResponse ConnectionFromClient::init_transp
 
 Messages::RequestServer::ConnectNewClientResponse ConnectionFromClient::connect_new_client()
 {
-    static_assert(IsSame<IPC::Transport, IPC::TransportSocket>, "Need to handle other IPC transports here");
+    // TODO: Mach IPC
 
     int socket_fds[2] {};
     if (auto err = Core::System::socketpair(AF_LOCAL, SOCK_STREAM, 0, socket_fds); err.is_error()) {
@@ -335,7 +339,7 @@ Messages::RequestServer::ConnectNewClientResponse ConnectionFromClient::connect_
     }
     auto client_socket = client_socket_or_error.release_value();
     // Note: A ref is stored in the static s_connections map
-    auto client = adopt_ref(*new ConnectionFromClient(IPC::Transport(move(client_socket))));
+    auto client = adopt_ref(*new ConnectionFromClient(make<IPC::Transport>(move(client_socket))));
 
     return IPC::File::adopt_fd(socket_fds[1]);
 }
@@ -372,6 +376,12 @@ void ConnectionFromClient::set_dns_server(ByteString host_or_address, u16 port, 
         default_resolver()->dns.reset_connection();
 }
 
+#ifdef AK_OS_WINDOWS
+void ConnectionFromClient::start_request(i32, ByteString, URL::URL, HTTP::HeaderMap, ByteBuffer, Core::ProxyData)
+{
+    VERIFY(0 && "RequestServer::ConnectionFromClient::start_request is not implemented");
+}
+#else
 void ConnectionFromClient::start_request(i32 request_id, ByteString method, URL::URL url, HTTP::HeaderMap request_headers, ByteBuffer request_body, Core::ProxyData proxy_data)
 {
     auto host = url.serialized_host().to_byte_string();
@@ -496,6 +506,7 @@ void ConnectionFromClient::start_request(i32 request_id, ByteString method, URL:
             m_active_requests.set(request_id, move(request));
         });
 }
+#endif
 
 static Requests::NetworkError map_curl_code_to_network_error(CURLcode const& code)
 {

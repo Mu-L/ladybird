@@ -263,10 +263,10 @@ Gfx::Path CanvasRenderingContext2D::text_path(StringView text, float x, float y,
     }
 
     // Apply text baseline
-    // FIXME: Implement CanvasTextBasline::Hanging, Bindings::CanvasTextAlign::Alphabetic and Bindings::CanvasTextAlign::Ideographic for real
+    // FIXME: Implement CanvasTextBaseline::Hanging, Bindings::CanvasTextAlign::Alphabetic and Bindings::CanvasTextAlign::Ideographic for real
     //        right now they are just handled as textBaseline = top or bottom.
     //        https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-textbaseline-hanging
-    // Default baseline of draw_text is top so do nothing by CanvasTextBaseline::Top and CanvasTextBasline::Hanging
+    // Default baseline of draw_text is top so do nothing by CanvasTextBaseline::Top and CanvasTextBaseline::Hanging
     if (drawing_state.text_baseline == Bindings::CanvasTextBaseline::Middle) {
         transform = Gfx::AffineTransform {}.set_translation({ 0, font->pixel_size() / 2 }).multiply(transform);
     }
@@ -329,10 +329,16 @@ void CanvasRenderingContext2D::stroke_internal(Gfx::Path const& path)
 
     auto& state = drawing_state();
 
-    // FIXME: Honor state's miter_limit, dash_list, and line_dash_offset.
     auto line_cap = to_gfx_cap(state.line_cap);
     auto line_join = to_gfx_join(state.line_join);
-    painter->stroke_path(path, state.stroke_style.to_gfx_paint_style(), state.filters, state.line_width, state.global_alpha, state.current_compositing_and_blending_operator, line_cap, line_join);
+    // FIXME: Need a Vector<float> for rendering dash_array, but state.dash_list is Vector<double>.
+    // Maybe possible to avoid creating copies?
+    auto dash_array = Vector<float> {};
+    dash_array.ensure_capacity(state.dash_list.size());
+    for (auto const& dash : state.dash_list) {
+        dash_array.append(static_cast<float>(dash));
+    }
+    painter->stroke_path(path, state.stroke_style.to_gfx_paint_style(), state.filters, state.line_width, state.global_alpha, state.current_compositing_and_blending_operator, line_cap, line_join, state.miter_limit, dash_array, state.line_dash_offset);
 
     did_draw(path.bounding_box());
 }
@@ -470,7 +476,7 @@ WebIDL::ExceptionOr<GC::Ptr<ImageData>> CanvasRenderingContext2D::get_image_data
 }
 
 // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-putimagedata-short
-void CanvasRenderingContext2D::put_image_data(ImageData const& image_data, float x, float y)
+void CanvasRenderingContext2D::put_image_data(ImageData& image_data, float x, float y)
 {
     // The putImageData(imageData, dx, dy) method steps are to put pixels from an ImageData onto a bitmap,
     // given imageData, this's output bitmap, dx, dy, 0, 0, imageData's width, and imageData's height.

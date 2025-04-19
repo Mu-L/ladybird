@@ -145,7 +145,7 @@ void HTMLInputElement::adjust_computed_style(CSS::ComputedProperties& style)
             style.set_property(CSS::PropertyID::Width, CSS::LengthStyleValue::create(CSS::Length(size(), CSS::Length::Type::Ch)));
     }
 
-    // NOTE: The following line-height check is done for web compatability and usability reasons.
+    // NOTE: The following line-height check is done for web compatibility and usability reasons.
     // FIXME: The "normal" line-height value should be calculated but assume 1.0 for now.
     double normal_line_height = 1.0;
     double current_line_height = style.line_height().to_double();
@@ -1217,15 +1217,15 @@ void HTMLInputElement::create_range_input_shadow_tree()
     set_shadow_root(shadow_root);
 
     m_slider_runnable_track = MUST(DOM::create_element(document(), HTML::TagNames::div, Namespace::HTML));
-    m_slider_runnable_track->set_use_pseudo_element(CSS::PseudoElement::Track);
+    m_slider_runnable_track->set_use_pseudo_element(CSS::PseudoElement::SliderTrack);
     MUST(shadow_root->append_child(*m_slider_runnable_track));
 
     m_slider_progress_element = MUST(DOM::create_element(document(), HTML::TagNames::div, Namespace::HTML));
-    m_slider_progress_element->set_use_pseudo_element(CSS::PseudoElement::Fill);
+    m_slider_progress_element->set_use_pseudo_element(CSS::PseudoElement::SliderFill);
     MUST(m_slider_runnable_track->append_child(*m_slider_progress_element));
 
     m_slider_thumb = MUST(DOM::create_element(document(), HTML::TagNames::div, Namespace::HTML));
-    m_slider_thumb->set_use_pseudo_element(CSS::PseudoElement::Thumb);
+    m_slider_thumb->set_use_pseudo_element(CSS::PseudoElement::SliderThumb);
     MUST(m_slider_runnable_track->append_child(*m_slider_thumb));
 
     update_slider_shadow_tree_elements();
@@ -2209,7 +2209,7 @@ static Optional<double> convert_local_date_and_time_string_to_number(StringView 
     auto date = date_and_time.date;
     auto time = date_and_time.time;
 
-    auto date_time = UnixDateTime::from_unix_time_parts(date.year, date.month, date.day, time.hour, time.minute, time.second, 0);
+    auto date_time = UnixDateTime::from_unix_time_parts(date.year, date.month, date.day, time.hour, time.minute, time.second, static_cast<i32>(time.second * 1000) % 1000);
     return date_time.milliseconds_since_epoch();
 }
 
@@ -2404,7 +2404,7 @@ WebIDL::ExceptionOr<GC::Ptr<JS::Date>> HTMLInputElement::convert_string_to_date(
 }
 
 // https://html.spec.whatwg.org/multipage/input.html#concept-input-value-date-string
-String HTMLInputElement::covert_date_to_string(GC::Ref<JS::Date> input) const
+String HTMLInputElement::convert_date_to_string(GC::Ref<JS::Date> input) const
 {
     // https://html.spec.whatwg.org/multipage/input.html#date-state-(type=date):concept-input-value-date-string
     if (type_state() == TypeAttributeState::Date) {
@@ -2420,7 +2420,7 @@ String HTMLInputElement::covert_date_to_string(GC::Ref<JS::Date> input) const
         return convert_number_to_time_string(input->date_value());
     }
 
-    dbgln("HTMLInputElement::covert_date_to_string() not implemented for input type {}", type());
+    dbgln("HTMLInputElement::convert_date_to_string() not implemented for input type {}", type());
     return {};
 }
 
@@ -2475,8 +2475,23 @@ double HTMLInputElement::default_step() const
     if (type_state() == TypeAttributeState::Time)
         return 60;
 
-    dbgln("HTMLInputElement::default_step() not implemented for input type {}", type());
-    return 0;
+    // https://html.spec.whatwg.org/multipage/input.html#date-state-(type=date):concept-input-step-default
+    if (type_state() == TypeAttributeState::Date)
+        return 1;
+
+    // https://html.spec.whatwg.org/multipage/input.html#month-state-(type=month):concept-input-step-default
+    if (type_state() == TypeAttributeState::Month)
+        return 1;
+
+    // https://html.spec.whatwg.org/multipage/input.html#week-state-(type=week):concept-input-step-default
+    if (type_state() == TypeAttributeState::Week)
+        return 1;
+
+    // https://html.spec.whatwg.org/multipage/input.html#local-date-and-time-state-(type=datetime-local):concept-input-step-default
+    if (type_state() == TypeAttributeState::LocalDateAndTime)
+        return 60;
+
+    VERIFY_NOT_REACHED();
 }
 
 // https://html.spec.whatwg.org/multipage/input.html#concept-input-step-scale
@@ -2494,8 +2509,23 @@ double HTMLInputElement::step_scale_factor() const
     if (type_state() == TypeAttributeState::Time)
         return 1000;
 
-    dbgln("HTMLInputElement::step_scale_factor() not implemented for input type {}", type());
-    return 0;
+    // https://html.spec.whatwg.org/multipage/input.html#date-state-(type=date):concept-input-step-scale
+    if (type_state() == TypeAttributeState::Date)
+        return 86400000;
+
+    // https://html.spec.whatwg.org/multipage/input.html#month-state-(type=month):concept-input-step-scale
+    if (type_state() == TypeAttributeState::Month)
+        return 1;
+
+    // https://html.spec.whatwg.org/multipage/input.html#week-state-(type=week):concept-input-step-scale
+    if (type_state() == TypeAttributeState::Week)
+        return 604800000;
+
+    // https://html.spec.whatwg.org/multipage/input.html#local-date-and-time-state-(type=datetime-local):concept-input-step-scale
+    if (type_state() == TypeAttributeState::LocalDateAndTime)
+        return 1000;
+
+    VERIFY_NOT_REACHED();
 }
 
 // https://html.spec.whatwg.org/multipage/input.html#concept-input-step
@@ -2589,7 +2619,7 @@ WebIDL::ExceptionOr<void> HTMLInputElement::set_value_as_date(Optional<GC::Root<
     }
 
     // otherwise, run the algorithm to convert a Date object to a string, as defined for that state, on the new value, and set the value of the element to the resulting string.
-    TRY(set_value(covert_date_to_string(date)));
+    TRY(set_value(convert_date_to_string(date)));
     return {};
 }
 

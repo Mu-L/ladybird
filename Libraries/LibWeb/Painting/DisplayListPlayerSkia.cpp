@@ -663,7 +663,6 @@ void DisplayListPlayerSkia::stroke_path_using_color(StrokePathUsingColor const& 
     if (!command.thickness)
         return;
 
-    // FIXME: Use .miter_limit, .dash_array, .dash_offset.
     auto& canvas = surface().canvas();
     SkPaint paint;
     paint.setAntiAlias(true);
@@ -672,6 +671,8 @@ void DisplayListPlayerSkia::stroke_path_using_color(StrokePathUsingColor const& 
     paint.setStrokeCap(to_skia_cap(command.cap_style));
     paint.setStrokeJoin(to_skia_join(command.join_style));
     paint.setColor(to_skia_color(command.color));
+    paint.setStrokeMiter(command.miter_limit);
+    paint.setPathEffect(SkDashPathEffect::Make(command.dash_array.data(), command.dash_array.size(), command.dash_offset));
     auto path = to_skia_path(command.path);
     path.offset(command.aa_translation.x(), command.aa_translation.y());
     canvas.drawPath(path, paint);
@@ -683,7 +684,6 @@ void DisplayListPlayerSkia::stroke_path_using_paint_style(StrokePathUsingPaintSt
     if (!command.thickness)
         return;
 
-    // FIXME: Use .miter_limit, .dash_array, .dash_offset.
     auto path = to_skia_path(command.path);
     path.offset(command.aa_translation.x(), command.aa_translation.y());
     auto paint = paint_style_to_skia_paint(*command.paint_style, command.bounding_rect().to_type<float>());
@@ -693,6 +693,8 @@ void DisplayListPlayerSkia::stroke_path_using_paint_style(StrokePathUsingPaintSt
     paint.setStrokeWidth(command.thickness);
     paint.setStrokeCap(to_skia_cap(command.cap_style));
     paint.setStrokeJoin(to_skia_join(command.join_style));
+    paint.setStrokeMiter(command.miter_limit);
+    paint.setPathEffect(SkDashPathEffect::Make(command.dash_array.data(), command.dash_array.size(), command.dash_offset));
     surface().canvas().drawPath(path, paint);
 }
 
@@ -972,7 +974,8 @@ void DisplayListPlayerSkia::add_mask(AddMask const& command)
 
     auto mask_surface = Gfx::PaintingSurface::create_with_size(m_context, rect.size(), Gfx::BitmapFormat::BGRA8888, Gfx::AlphaType::Premultiplied);
 
-    execute_impl(*command.display_list, mask_surface);
+    ScrollStateSnapshot scroll_state_snapshot;
+    execute_impl(*command.display_list, scroll_state_snapshot, mask_surface);
 
     SkMatrix mask_matrix;
     mask_matrix.setTranslate(rect.x(), rect.y());
@@ -985,7 +988,7 @@ void DisplayListPlayerSkia::paint_nested_display_list(PaintNestedDisplayList con
 {
     auto& canvas = surface().canvas();
     canvas.translate(command.rect.x(), command.rect.y());
-    execute_impl(*command.display_list, {});
+    execute_impl(*command.display_list, command.scroll_state_snapshot, {});
 }
 
 void DisplayListPlayerSkia::paint_scrollbar(PaintScrollBar const& command)

@@ -188,7 +188,7 @@ static bool fire_an_event(FlyString const& name, Optional<Web::DOM::Element&> ta
 
 ErrorOr<NonnullRefPtr<WebDriverConnection>> WebDriverConnection::connect(Web::PageClient& page_client, ByteString const& webdriver_ipc_path)
 {
-    static_assert(IsSame<IPC::Transport, IPC::TransportSocket>, "Need to handle other IPC transports here");
+    // TODO: Mach IPC and Windows IPC
 
     dbgln_if(WEBDRIVER_DEBUG, "Trying to connect to {}", webdriver_ipc_path);
     auto socket = TRY(Core::LocalSocket::connect(webdriver_ipc_path));
@@ -197,10 +197,10 @@ ErrorOr<NonnullRefPtr<WebDriverConnection>> WebDriverConnection::connect(Web::Pa
     page_client.page().set_should_block_pop_ups(false);
 
     dbgln_if(WEBDRIVER_DEBUG, "Connected to WebDriver");
-    return adopt_nonnull_ref_or_enomem(new (nothrow) WebDriverConnection(IPC::Transport(move(socket)), page_client));
+    return adopt_nonnull_ref_or_enomem(new (nothrow) WebDriverConnection(make<IPC::Transport>(move(socket)), page_client));
 }
 
-WebDriverConnection::WebDriverConnection(IPC::Transport transport, Web::PageClient& page_client)
+WebDriverConnection::WebDriverConnection(NonnullOwnPtr<IPC::Transport> transport, Web::PageClient& page_client)
     : IPC::ConnectionToServer<WebDriverClientEndpoint, WebDriverServerEndpoint>(*this, move(transport))
 {
     set_current_top_level_browsing_context(page_client.page().top_level_browsing_context());

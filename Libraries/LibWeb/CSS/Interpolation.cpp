@@ -508,7 +508,7 @@ NonnullRefPtr<CSSStyleValue const> interpolate_value(DOM::Element& element, Calc
 
         struct NumericBaseTypeAndDefault {
             CSSNumericType::BaseType base_type;
-            ValueComparingNonnullRefPtr<CSSStyleValue> default_value;
+            ValueComparingNonnullRefPtr<CSSStyleValue const> default_value;
         };
         static constexpr auto numeric_base_type_and_default = [](CSSStyleValue const& value) -> Optional<NumericBaseTypeAndDefault> {
             switch (value.type()) {
@@ -537,7 +537,7 @@ NonnullRefPtr<CSSStyleValue const> interpolate_value(DOM::Element& element, Calc
             }
         };
 
-        static auto to_calculation_node = [calculation_context](CSSStyleValue const& value) -> NonnullRefPtr<CalculationNode> {
+        static auto to_calculation_node = [calculation_context](CSSStyleValue const& value) -> NonnullRefPtr<CalculationNode const> {
             switch (value.type()) {
             case CSSStyleValue::Type::Angle:
                 return NumericCalculationNode::create(value.as_angle().angle(), calculation_context);
@@ -566,7 +566,7 @@ NonnullRefPtr<CSSStyleValue const> interpolate_value(DOM::Element& element, Calc
             auto interpolated_from = interpolate_value(element, calculation_context, from, from_base_type_and_default->default_value, delta);
             auto interpolated_to = interpolate_value(element, calculation_context, to_base_type_and_default->default_value, to, delta);
 
-            Vector<NonnullRefPtr<CalculationNode>> values;
+            Vector<NonnullRefPtr<CalculationNode const>> values;
             values.ensure_capacity(2);
             values.unchecked_append(to_calculation_node(interpolated_from));
             values.unchecked_append(to_calculation_node(interpolated_to));
@@ -586,8 +586,13 @@ NonnullRefPtr<CSSStyleValue const> interpolate_value(DOM::Element& element, Calc
             layout_node = *node;
         return CSSColorValue::create_from_color(interpolate_color(from.to_color(layout_node), to.to_color(layout_node), delta), ColorSyntax::Modern);
     }
-    case CSSStyleValue::Type::Integer:
-        return IntegerStyleValue::create(interpolate_raw(from.as_integer().integer(), to.as_integer().integer(), delta));
+    case CSSStyleValue::Type::Integer: {
+        // https://drafts.csswg.org/css-values/#combine-integers
+        // Interpolation of <integer> is defined as Vresult = round((1 - p) × VA + p × VB);
+        // that is, interpolation happens in the real number space as for <number>s, and the result is converted to an <integer> by rounding to the nearest integer.
+        auto interpolated_value = interpolate_raw(from.as_integer().value(), to.as_integer().value(), delta);
+        return IntegerStyleValue::create(round_to<i64>(interpolated_value));
+    }
     case CSSStyleValue::Type::Length: {
         // FIXME: Absolutize values
         auto const& from_length = from.as_length().length();
@@ -610,6 +615,11 @@ NonnullRefPtr<CSSStyleValue const> interpolate_value(DOM::Element& element, Calc
     case CSSStyleValue::Type::Ratio: {
         auto from_ratio = from.as_ratio().ratio();
         auto to_ratio = to.as_ratio().ratio();
+
+        // https://drafts.csswg.org/css-values/#combine-ratio
+        // If either <ratio> is degenerate, the values cannot be interpolated.
+        if (from_ratio.is_degenerate() || to_ratio.is_degenerate())
+            return delta >= 0.5f ? to : from;
 
         // The interpolation of a <ratio> is defined by converting each <ratio> to a number by dividing the first value
         // by the second (so a ratio of 3 / 2 would become 1.5), taking the logarithm of that result (so the 1.5 would

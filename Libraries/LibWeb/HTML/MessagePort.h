@@ -13,7 +13,6 @@
 #include <LibCore/Socket.h>
 #include <LibIPC/File.h>
 #include <LibIPC/Transport.h>
-#include <LibIPC/UnprocessedFileDescriptors.h>
 #include <LibWeb/Bindings/Transferable.h>
 #include <LibWeb/DOM/EventTarget.h>
 #include <LibWeb/Forward.h>
@@ -86,7 +85,7 @@ private:
     // https://html.spec.whatwg.org/multipage/web-messaging.html#has-been-shipped
     bool m_has_been_shipped { false };
 
-    Optional<IPC::Transport> m_transport;
+    OwnPtr<IPC::Transport> m_transport;
 
     GC::Ptr<DOM::EventTarget> m_worker_event_target;
 };

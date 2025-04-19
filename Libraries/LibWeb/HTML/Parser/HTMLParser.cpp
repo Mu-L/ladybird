@@ -49,6 +49,10 @@
 #include <LibWeb/SVG/SVGScriptElement.h>
 #include <LibWeb/SVG/TagNames.h>
 
+#ifdef LIBWEB_USE_SWIFT
+#    include <LibWeb-Swift.h>
+#endif
+
 namespace Web::HTML {
 
 GC_DEFINE_ALLOCATOR(HTMLParser);
@@ -189,9 +193,23 @@ void HTMLParser::visit_edges(Cell::Visitor& visitor)
     m_list_of_active_formatting_elements.visit_edges(visitor);
 }
 
+void HTMLParser::initialize(JS::Realm& realm)
+{
+    Base::initialize(realm);
+
+#if defined(LIBWEB_USE_SWIFT)
+    m_speculative_parser = GC::ForeignRef<Web::SpeculativeHTMLParser>::allocate(realm.heap(), this);
+#endif
+}
+
 void HTMLParser::run(HTMLTokenizer::StopAtInsertionPoint stop_at_insertion_point)
 {
     m_stop_parsing = false;
+
+#if defined(LIBWEB_USE_SWIFT)
+    dbgln("Poking Swift Tokenizer");
+    m_speculative_parser->poke();
+#endif
 
     for (;;) {
         auto optional_token = m_tokenizer.next_token(stop_at_insertion_point);
@@ -4642,21 +4660,21 @@ Vector<GC::Root<DOM::Node>> HTMLParser::parse_html_fragment(DOM::Element& contex
 
 GC::Ref<HTMLParser> HTMLParser::create_for_scripting(DOM::Document& document)
 {
-    return document.heap().allocate<HTMLParser>(document);
+    return document.realm().create<HTMLParser>(document);
 }
 
 GC::Ref<HTMLParser> HTMLParser::create_with_uncertain_encoding(DOM::Document& document, ByteBuffer const& input, Optional<MimeSniff::MimeType> maybe_mime_type)
 {
     if (document.has_encoding())
-        return document.heap().allocate<HTMLParser>(document, input, document.encoding().value().to_byte_string());
+        return document.realm().create<HTMLParser>(document, input, document.encoding().value().to_byte_string());
     auto encoding = run_encoding_sniffing_algorithm(document, input, maybe_mime_type);
     dbgln_if(HTML_PARSER_DEBUG, "The encoding sniffing algorithm returned encoding '{}'", encoding);
-    return document.heap().allocate<HTMLParser>(document, input, encoding);
+    return document.realm().create<HTMLParser>(document, input, encoding);
 }
 
 GC::Ref<HTMLParser> HTMLParser::create(DOM::Document& document, StringView input, StringView encoding)
 {
-    return document.heap().allocate<HTMLParser>(document, input, encoding);
+    return document.realm().create<HTMLParser>(document, input, encoding);
 }
 
 enum class AttributeMode {
@@ -4925,7 +4943,7 @@ String HTMLParser::serialize_html_fragment(DOM::Node const& node, SerializableSh
 }
 
 // https://html.spec.whatwg.org/multipage/common-microsyntaxes.html#current-dimension-value
-static RefPtr<CSS::CSSStyleValue> parse_current_dimension_value(float value, Utf8View input, Utf8View::Iterator position)
+static RefPtr<CSS::CSSStyleValue const> parse_current_dimension_value(float value, Utf8View input, Utf8View::Iterator position)
 {
     // 1. If position is past the end of input, then return value as a length.
     if (position == input.end())
@@ -4940,7 +4958,7 @@ static RefPtr<CSS::CSSStyleValue> parse_current_dimension_value(float value, Utf
 }
 
 // https://html.spec.whatwg.org/multipage/common-microsyntaxes.html#rules-for-parsing-dimension-values
-RefPtr<CSS::CSSStyleValue> parse_dimension_value(StringView string)
+RefPtr<CSS::CSSStyleValue const> parse_dimension_value(StringView string)
 {
     // 1. Let input be the string being parsed.
     auto input = Utf8View(string);
@@ -5014,7 +5032,7 @@ RefPtr<CSS::CSSStyleValue> parse_dimension_value(StringView string)
 }
 
 // https://html.spec.whatwg.org/multipage/common-microsyntaxes.html#rules-for-parsing-non-zero-dimension-values
-RefPtr<CSS::CSSStyleValue> parse_nonzero_dimension_value(StringView string)
+RefPtr<CSS::CSSStyleValue const> parse_nonzero_dimension_value(StringView string)
 {
     // 1. Let input be the string being parsed.
     // 2. Let value be the result of parsing input using the rules for parsing dimension values.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2024, Andreas Kling <andreas@ladybird.org>
+ * Copyright (c) 2018-2025, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2023-2025, Sam Atkins <sam@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -18,6 +18,8 @@
 #include <LibWeb/CSS/ComputedValues.h>
 #include <LibWeb/CSS/LengthBox.h>
 #include <LibWeb/CSS/PropertyID.h>
+#include <LibWeb/CSS/PseudoClass.h>
+#include <LibWeb/CSS/PseudoClassBitmap.h>
 #include <LibWeb/CSS/StyleProperty.h>
 
 namespace Web::CSS {
@@ -186,17 +188,24 @@ public:
     FillRule fill_rule() const;
     ClipRule clip_rule() const;
 
-    Gfx::Font const& first_available_computed_font() const { return m_font_list->first(); }
-
     Gfx::FontCascadeList const& computed_font_list() const
     {
         VERIFY(m_font_list);
         return *m_font_list;
     }
 
-    void set_computed_font_list(NonnullRefPtr<Gfx::FontCascadeList> font_list) const
+    Gfx::Font const& first_available_computed_font() const
+    {
+        VERIFY(m_first_available_computed_font);
+        return *m_first_available_computed_font;
+    }
+
+    void set_computed_font_list(NonnullRefPtr<Gfx::FontCascadeList const> font_list)
     {
         m_font_list = move(font_list);
+        // https://drafts.csswg.org/css-fonts/#first-available-font
+        // First font for which the character U+0020 (space) is not excluded by a unicode-range
+        m_first_available_computed_font = m_font_list->font_for_code_point(' ');
     }
 
     [[nodiscard]] CSSPixels compute_line_height(CSSPixelRect const& viewport_rect, Length::FontMetrics const& font_metrics, Length::FontMetrics const& root_font_metrics) const;
@@ -221,8 +230,15 @@ public:
 
     static float resolve_opacity_value(CSSStyleValue const& value);
 
-    bool did_match_any_hover_rules() const { return m_did_match_any_hover_rules; }
-    void set_did_match_any_hover_rules() { m_did_match_any_hover_rules = true; }
+    bool has_attempted_match_against_pseudo_class(PseudoClass pseudo_class) const
+    {
+        return m_attempted_pseudo_class_matches.get(pseudo_class);
+    }
+
+    void set_attempted_pseudo_class_matches(PseudoClassBitmap const& results)
+    {
+        m_attempted_pseudo_class_matches = results;
+    }
 
 private:
     friend class StyleComputer;
@@ -244,11 +260,12 @@ private:
     HashMap<PropertyID, NonnullRefPtr<CSSStyleValue const>> m_animated_property_values;
 
     int m_math_depth { InitialValues::math_depth() };
-    mutable RefPtr<Gfx::FontCascadeList> m_font_list;
+    RefPtr<Gfx::FontCascadeList const> m_font_list;
+    RefPtr<Gfx::Font const> m_first_available_computed_font;
 
     Optional<CSSPixels> m_line_height;
 
-    bool m_did_match_any_hover_rules { false };
+    PseudoClassBitmap m_attempted_pseudo_class_matches;
 };
 
 }

@@ -201,7 +201,7 @@ public:
     Function<void(JsonObject)> on_received_accessibility_tree;
     Function<void(Web::UniqueNodeID)> on_received_hovered_node_id;
     Function<void(Mutation)> on_dom_mutation_received;
-    Function<void(Optional<Web::UniqueNodeID> const& node_id)> on_finshed_editing_dom_node;
+    Function<void(Optional<Web::UniqueNodeID> const& node_id)> on_finished_editing_dom_node;
     Function<void(String)> on_received_dom_node_html;
     Function<void(Vector<Web::CSS::StyleSheetIdentifier>)> on_received_style_sheet_list;
     Function<void(Web::CSS::StyleSheetIdentifier const&, URL::URL const&, String const&)> on_received_style_sheet_source;
@@ -267,7 +267,7 @@ protected:
     struct SharedBitmap {
         i32 id { -1 };
         Web::DevicePixelSize last_painted_size;
-        RefPtr<Gfx::Bitmap> bitmap;
+        RefPtr<Gfx::Bitmap const> bitmap;
     };
 
     struct ClientState {
@@ -289,7 +289,7 @@ protected:
 
     RefPtr<Core::Timer> m_backing_store_shrink_timer;
 
-    RefPtr<Gfx::Bitmap> m_backup_bitmap;
+    RefPtr<Gfx::Bitmap const> m_backup_bitmap;
     Web::DevicePixelSize m_backup_bitmap_size;
 
     size_t m_crash_count = 0;

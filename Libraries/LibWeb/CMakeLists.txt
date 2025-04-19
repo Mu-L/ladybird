@@ -153,7 +153,7 @@ set(SOURCES
     CSS/StyleValues/ContentStyleValue.cpp
     CSS/StyleValues/CounterDefinitionsStyleValue.cpp
     CSS/StyleValues/CounterStyleValue.cpp
-    CSS/StyleValues/CSSColor.cpp
+    CSS/StyleValues/ColorFunctionStyleValue.cpp
     CSS/StyleValues/CSSColorValue.cpp
     CSS/StyleValues/CSSHSL.cpp
     CSS/StyleValues/CSSHWB.cpp
@@ -195,6 +195,7 @@ set(SOURCES
     CSS/Time.cpp
     CSS/Transformation.cpp
     CSS/TransitionEvent.cpp
+    CSS/URL.cpp
     CSS/VisualViewport.cpp
     Cookie/Cookie.cpp
     Cookie/ParsedCookie.cpp
@@ -332,6 +333,7 @@ set(SOURCES
     HTML/CloseEvent.cpp
     HTML/CloseWatcher.cpp
     HTML/CloseWatcherManager.cpp
+    HTML/CommandEvent.cpp
     HTML/CORSSettingAttribute.cpp
     HTML/CrossOrigin/AbstractOperations.cpp
     HTML/CrossOrigin/Reporting.cpp
@@ -566,6 +568,7 @@ set(SOURCES
     IndexedDB/IDBVersionChangeEvent.cpp
     IndexedDB/Internal/Algorithms.cpp
     IndexedDB/Internal/Database.cpp
+    IndexedDB/Internal/Index.cpp
     IndexedDB/Internal/Key.cpp
     IndexedDB/Internal/ObjectStore.cpp
     IndexedDB/Internal/RequestList.cpp
@@ -689,6 +692,7 @@ set(SOURCES
     Painting/SVGPaintable.cpp
     Painting/SVGSVGPaintable.cpp
     Painting/ScrollFrame.cpp
+    Painting/ScrollState.cpp
     Painting/ShadowPainting.cpp
     Painting/StackingContext.cpp
     Painting/TableBordersPainting.cpp
@@ -740,19 +744,25 @@ set(SOURCES
     Streams/GenericTransformStream.cpp
     Streams/ReadableByteStreamController.cpp
     Streams/ReadableStream.cpp
+    Streams/ReadableStreamAsyncIterator.cpp
     Streams/ReadableStreamBYOBReader.cpp
     Streams/ReadableStreamBYOBRequest.cpp
     Streams/ReadableStreamDefaultController.cpp
     Streams/ReadableStreamDefaultReader.cpp
     Streams/ReadableStreamGenericReader.cpp
+    Streams/ReadableStreamOperations.cpp
+    Streams/ReadableStreamPipeTo.cpp
+    Streams/ReadableStreamTee.cpp
     Streams/Transformer.cpp
     Streams/TransformStream.cpp
     Streams/TransformStreamDefaultController.cpp
+    Streams/TransformStreamOperations.cpp
     Streams/UnderlyingSink.cpp
     Streams/UnderlyingSource.cpp
     Streams/WritableStream.cpp
     Streams/WritableStreamDefaultController.cpp
     Streams/WritableStreamDefaultWriter.cpp
+    Streams/WritableStreamOperations.cpp
     SVG/AttributeNames.cpp
     SVG/AttributeParser.cpp
     SVG/SVGAElement.cpp
@@ -892,6 +902,7 @@ set(SOURCES
     WebGL/WebGLUniformLocation.cpp
     WebGL/WebGLVertexArrayObject.cpp
     WebIDL/AbstractOperations.cpp
+    WebIDL/AsyncIterator.cpp
     WebIDL/Buffers.cpp
     WebIDL/CallbackType.cpp
     WebIDL/DOMException.cpp

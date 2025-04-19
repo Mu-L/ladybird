@@ -86,7 +86,6 @@ struct MatchingRule {
     u32 specificity { 0 };
     CascadeOrigin cascade_origin;
     bool contains_pseudo_element { false };
-    bool must_be_hovered { false };
 
     // Helpers to deal with the fact that `rule` might be a CSSStyleRule or a CSSNestedDeclarations
     CSSStyleProperties const& declaration() const;
@@ -161,8 +160,9 @@ public:
     [[nodiscard]] GC::Ref<ComputedProperties> compute_style(DOM::Element&, Optional<CSS::PseudoElement> = {}) const;
     [[nodiscard]] GC::Ptr<ComputedProperties> compute_pseudo_element_style_if_needed(DOM::Element&, Optional<CSS::PseudoElement>) const;
 
-    RuleCache const& get_hover_rules() const;
-    [[nodiscard]] Vector<MatchingRule const*> collect_matching_rules(DOM::Element const&, CascadeOrigin, Optional<CSS::PseudoElement>, bool& did_match_any_hover_rules, FlyString const& qualified_layer_name = {}) const;
+    [[nodiscard]] RuleCache const& get_pseudo_class_rule_cache(PseudoClass) const;
+
+    [[nodiscard]] Vector<MatchingRule const*> collect_matching_rules(DOM::Element const&, CascadeOrigin, Optional<CSS::PseudoElement>, PseudoClassBitmap& attempted_psuedo_class_matches, FlyString const& qualified_layer_name = {}) const;
 
     InvalidationSet invalidation_set_for_properties(Vector<InvalidationSet::Property> const&) const;
     bool invalidation_property_used_in_has_selector(InvalidationSet::Property const&) const;
@@ -183,7 +183,7 @@ public:
     static CSSPixelFraction absolute_size_mapping(Keyword);
     RefPtr<Gfx::FontCascadeList const> compute_font_for_style_values(DOM::Element const* element, Optional<CSS::PseudoElement> pseudo_element, CSSStyleValue const& font_family, CSSStyleValue const& font_size, CSSStyleValue const& font_style, CSSStyleValue const& font_weight, CSSStyleValue const& font_stretch, int math_depth = 0) const;
 
-    [[nodiscard]] RefPtr<CSSStyleValue> recascade_font_size_if_needed(DOM::Element&, Optional<CSS::PseudoElement> pseudo_element, CascadedProperties&) const;
+    [[nodiscard]] RefPtr<CSSStyleValue const> recascade_font_size_if_needed(DOM::Element&, Optional<CSS::PseudoElement> pseudo_element, CascadedProperties&) const;
 
     void set_viewport_rect(Badge<DOM::Document>, CSSPixelRect const& viewport_rect) { m_viewport_rect = viewport_rect; }
 
@@ -214,7 +214,7 @@ private:
     struct MatchingFontCandidate;
 
     [[nodiscard]] GC::Ptr<ComputedProperties> compute_style_impl(DOM::Element&, Optional<CSS::PseudoElement>, ComputeStyleMode) const;
-    [[nodiscard]] GC::Ref<CascadedProperties> compute_cascaded_values(DOM::Element&, Optional<CSS::PseudoElement>, bool& did_match_any_pseudo_element_rules, bool& did_match_any_hover_rules, ComputeStyleMode) const;
+    [[nodiscard]] GC::Ref<CascadedProperties> compute_cascaded_values(DOM::Element&, Optional<CSS::PseudoElement>, bool& did_match_any_pseudo_element_rules, PseudoClassBitmap& attempted_pseudo_class_matches, ComputeStyleMode) const;
     static RefPtr<Gfx::FontCascadeList const> find_matching_font_weight_ascending(Vector<MatchingFontCandidate> const& candidates, int target_weight, float font_size_in_pt, bool inclusive);
     static RefPtr<Gfx::FontCascadeList const> find_matching_font_weight_descending(Vector<MatchingFontCandidate> const& candidates, int target_weight, float font_size_in_pt, bool inclusive);
     RefPtr<Gfx::FontCascadeList const> font_matching_algorithm(FlyString const& family_name, int weight, int slope, float font_size_in_pt) const;
@@ -293,7 +293,7 @@ private:
     static void collect_selector_insights(Selector const&, SelectorInsights&);
 
     OwnPtr<SelectorInsights> m_selector_insights;
-    OwnPtr<RuleCache> m_hover_rule_cache;
+    Array<OwnPtr<RuleCache>, to_underlying(PseudoClass::__Count)> m_pseudo_class_rule_cache;
     OwnPtr<StyleInvalidationData> m_style_invalidation_data;
     OwnPtr<RuleCachesForDocumentAndShadowRoots> m_author_rule_cache;
     OwnPtr<RuleCachesForDocumentAndShadowRoots> m_user_rule_cache;
@@ -315,14 +315,14 @@ private:
 
 class FontLoader : public ResourceClient {
 public:
-    FontLoader(StyleComputer& style_computer, FlyString family_name, Vector<Gfx::UnicodeRange> unicode_ranges, Vector<URL::URL> urls, ESCAPING Function<void(FontLoader const&)> on_load = {}, ESCAPING Function<void()> on_fail = {});
+    FontLoader(StyleComputer& style_computer, FlyString family_name, Vector<Gfx::UnicodeRange> unicode_ranges, Vector<::URL::URL> urls, ESCAPING Function<void(FontLoader const&)> on_load = {}, ESCAPING Function<void()> on_fail = {});
 
     virtual ~FontLoader() override;
 
     Vector<Gfx::UnicodeRange> const& unicode_ranges() const { return m_unicode_ranges; }
-    RefPtr<Gfx::Typeface> vector_font() const { return m_vector_font; }
+    RefPtr<Gfx::Typeface const> vector_font() const { return m_vector_font; }
 
-    RefPtr<Gfx::Font> font_with_point_size(float point_size);
+    RefPtr<Gfx::Font const> font_with_point_size(float point_size);
     void start_loading_next_url();
 
     bool is_loading() const { return resource() && resource()->is_pending(); }
@@ -334,13 +334,13 @@ private:
 
     void resource_did_load_or_fail();
 
-    ErrorOr<NonnullRefPtr<Gfx::Typeface>> try_load_font();
+    ErrorOr<NonnullRefPtr<Gfx::Typeface const>> try_load_font();
 
     StyleComputer& m_style_computer;
     FlyString m_family_name;
     Vector<Gfx::UnicodeRange> m_unicode_ranges;
-    RefPtr<Gfx::Typeface> m_vector_font;
-    Vector<URL::URL> m_urls;
+    RefPtr<Gfx::Typeface const> m_vector_font;
+    Vector<::URL::URL> m_urls;
     Function<void(FontLoader const&)> m_on_load;
     Function<void()> m_on_fail;
 };

@@ -7,8 +7,10 @@
 #include <LibWeb/Bindings/Intrinsics.h>
 #include <LibWeb/Bindings/TransformStreamPrototype.h>
 #include <LibWeb/Streams/AbstractOperations.h>
+#include <LibWeb/Streams/ReadableStream.h>
 #include <LibWeb/Streams/TransformStream.h>
 #include <LibWeb/Streams/TransformStreamDefaultController.h>
+#include <LibWeb/Streams/TransformStreamOperations.h>
 #include <LibWeb/Streams/Transformer.h>
 #include <LibWeb/Streams/WritableStream.h>
 #include <LibWeb/WebIDL/AbstractOperations.h>
@@ -55,7 +57,7 @@ WebIDL::ExceptionOr<GC::Ref<TransformStream>> TransformStream::construct_impl(JS
     auto start_promise = WebIDL::create_promise(realm);
 
     // 10. Perform ! InitializeTransformStream(this, startPromise, writableHighWaterMark, writableSizeAlgorithm, readableHighWaterMark, readableSizeAlgorithm).
-    initialize_transform_stream(*stream, start_promise, writable_high_water_mark, move(writable_size_algorithm), readable_high_water_mark, move(readable_size_algorithm));
+    initialize_transform_stream(*stream, start_promise, writable_high_water_mark, writable_size_algorithm, readable_high_water_mark, readable_size_algorithm);
 
     // 11. Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict).
     set_up_transform_stream_default_controller_from_transformer(*stream, transformer, transformer_dict);
@@ -63,7 +65,7 @@ WebIDL::ExceptionOr<GC::Ref<TransformStream>> TransformStream::construct_impl(JS
     // 12. If transformerDict["start"] exists, then resolve startPromise with the result of invoking
     //     transformerDict["start"] with argument list « this.[[controller]] » and callback this value transformer.
     if (transformer_dict.start) {
-        auto result = TRY(WebIDL::invoke_callback(*transformer_dict.start, transformer, stream->controller()));
+        auto result = TRY(WebIDL::invoke_callback(*transformer_dict.start, transformer, { { stream->controller() } }));
         WebIDL::resolve_promise(realm, start_promise, result);
     }
     // 13. Otherwise, resolve startPromise with undefined.

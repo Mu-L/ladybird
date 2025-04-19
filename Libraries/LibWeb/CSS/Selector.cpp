@@ -101,16 +101,12 @@ Selector::Selector(Vector<CompoundSelector>&& compound_selectors)
                 break;
             }
             if (simple_selector.type == SimpleSelector::Type::PseudoClass) {
-                if (simple_selector.pseudo_class().type == PseudoClass::Hover) {
-                    m_contains_hover_pseudo_class = true;
-                }
+                m_contained_pseudo_classes.set(simple_selector.pseudo_class().type, true);
                 for (auto const& child_selector : simple_selector.pseudo_class().argument_selector_list) {
                     if (child_selector->contains_the_nesting_selector()) {
                         m_contains_the_nesting_selector = true;
                     }
-                    if (child_selector->contains_hover_pseudo_class()) {
-                        m_contains_hover_pseudo_class = true;
-                    }
+                    m_contained_pseudo_classes |= child_selector->m_contained_pseudo_classes;
                 }
                 if (m_contains_the_nesting_selector)
                     break;
@@ -602,7 +598,7 @@ bool Selector::contains_unknown_webkit_pseudo_element() const
 RefPtr<Selector> Selector::absolutized(Selector::SimpleSelector const& selector_for_nesting) const
 {
     if (!contains_the_nesting_selector())
-        return *this;
+        return fixme_launder_const_through_pointer_cast(*this);
 
     Vector<CompoundSelector> absolutized_compound_selectors;
     absolutized_compound_selectors.ensure_capacity(m_compound_selectors.size());

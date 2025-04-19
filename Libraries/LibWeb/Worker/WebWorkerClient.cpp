@@ -11,7 +11,7 @@ namespace Web::HTML {
 
 void WebWorkerClient::die()
 {
-    // FIXME: Notify WorkerAgent that the worker is ded
+    // FIXME: Notify WorkerAgent that the worker is dead
 }
 
 void WebWorkerClient::did_close_worker()
@@ -20,14 +20,14 @@ void WebWorkerClient::did_close_worker()
         on_worker_close();
 }
 
-WebWorkerClient::WebWorkerClient(IPC::Transport transport)
+WebWorkerClient::WebWorkerClient(NonnullOwnPtr<IPC::Transport> transport)
     : IPC::ConnectionToServer<WebWorkerClientEndpoint, WebWorkerServerEndpoint>(*this, move(transport))
 {
 }
 
 IPC::File WebWorkerClient::clone_transport()
 {
-    return MUST(m_transport.clone_for_transfer());
+    return MUST(m_transport->clone_for_transfer());
 }
 
 }

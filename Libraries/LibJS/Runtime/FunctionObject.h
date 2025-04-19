@@ -26,8 +26,6 @@ public:
     virtual ThrowCompletionOr<Value> internal_call(Value this_argument, ReadonlySpan<Value> arguments_list) = 0;
     virtual ThrowCompletionOr<GC::Ref<Object>> internal_construct([[maybe_unused]] ReadonlySpan<Value> arguments_list, [[maybe_unused]] FunctionObject& new_target) { VERIFY_NOT_REACHED(); }
 
-    virtual FlyString const& name() const = 0;
-
     void set_function_name(Variant<PropertyKey, PrivateName> const& name_arg, Optional<StringView> const& prefix = {});
     void set_function_length(double length);
 
@@ -51,5 +49,8 @@ protected:
 private:
     virtual bool is_function() const override { return true; }
 };
+
+template<>
+inline bool Object::fast_is<FunctionObject>() const { return is_function(); }
 
 }

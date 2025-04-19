@@ -8,13 +8,11 @@
 
 #include <AK/Forward.h>
 #include <AK/NonnullRefPtr.h>
-#include <AK/SegmentedVector.h>
 #include <AK/Utf8View.h>
 #include <AK/Vector.h>
 #include <LibGfx/Color.h>
 #include <LibGfx/CompositingAndBlendingOperator.h>
 #include <LibGfx/Forward.h>
-#include <LibGfx/Gradients.h>
 #include <LibGfx/ImmutableBitmap.h>
 #include <LibGfx/LineStyle.h>
 #include <LibGfx/PaintStyle.h>
@@ -34,13 +32,14 @@
 #include <LibWeb/Painting/GradientData.h>
 #include <LibWeb/Painting/PaintBoxShadowParams.h>
 #include <LibWeb/Painting/PaintStyle.h>
+#include <LibWeb/Painting/ScrollState.h>
 
 namespace Web::Painting {
 
 class DisplayList;
 
 struct DrawGlyphRun {
-    NonnullRefPtr<Gfx::GlyphRun> glyph_run;
+    NonnullRefPtr<Gfx::GlyphRun const> glyph_run;
     double scale { 1 };
     Gfx::IntRect rect;
     Gfx::FloatPoint translation;
@@ -62,7 +61,7 @@ struct FillRect {
 
 struct DrawPaintingSurface {
     Gfx::IntRect dst_rect;
-    NonnullRefPtr<Gfx::PaintingSurface> surface;
+    NonnullRefPtr<Gfx::PaintingSurface const> surface;
     Gfx::IntRect src_rect;
     Gfx::ScalingMode scaling_mode;
 
@@ -73,7 +72,7 @@ struct DrawPaintingSurface {
 struct DrawScaledImmutableBitmap {
     Gfx::IntRect dst_rect;
     Gfx::IntRect clip_rect;
-    NonnullRefPtr<Gfx::ImmutableBitmap> bitmap;
+    NonnullRefPtr<Gfx::ImmutableBitmap const> bitmap;
     Gfx::ScalingMode scaling_mode;
 
     [[nodiscard]] Gfx::IntRect bounding_rect() const { return clip_rect; }
@@ -92,7 +91,7 @@ struct DrawRepeatedImmutableBitmap {
 
     Gfx::IntRect dst_rect;
     Gfx::IntRect clip_rect;
-    NonnullRefPtr<Gfx::ImmutableBitmap> bitmap;
+    NonnullRefPtr<Gfx::ImmutableBitmap const> bitmap;
     Gfx::ScalingMode scaling_mode;
     Repeat repeat;
 
@@ -171,7 +170,7 @@ struct PaintInnerBoxShadow {
 };
 
 struct PaintTextShadow {
-    NonnullRefPtr<Gfx::GlyphRun> glyph_run;
+    NonnullRefPtr<Gfx::GlyphRun const> glyph_run;
     double glyph_run_scale { 1 };
     Gfx::IntRect shadow_bounding_rect;
     Gfx::IntRect text_rect;
@@ -392,6 +391,7 @@ struct AddMask {
 
 struct PaintNestedDisplayList {
     RefPtr<DisplayList> display_list;
+    ScrollStateSnapshot scroll_state_snapshot;
     Gfx::IntRect rect;
 
     [[nodiscard]] Gfx::IntRect bounding_rect() const { return rect; }
@@ -438,7 +438,7 @@ struct ApplyTransform {
 
 struct ApplyMaskBitmap {
     Gfx::IntPoint origin;
-    NonnullRefPtr<Gfx::ImmutableBitmap> bitmap;
+    NonnullRefPtr<Gfx::ImmutableBitmap const> bitmap;
     Gfx::Bitmap::MaskKind kind;
 
     void translate_by(Gfx::IntPoint const& offset)

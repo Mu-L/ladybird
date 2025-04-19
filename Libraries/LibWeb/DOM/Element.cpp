@@ -539,8 +539,7 @@ CSS::RequiredInvalidationAfterStyleChange Element::recompute_style()
     auto old_display_is_none = m_computed_properties ? m_computed_properties->display().is_none() : true;
     auto new_display_is_none = new_computed_properties->display().is_none();
 
-    if (!invalidation.is_none())
-        set_computed_properties(move(new_computed_properties));
+    set_computed_properties(move(new_computed_properties));
 
     if (old_display_is_none != new_display_is_none) {
         play_or_cancel_animations_after_display_property_change();
@@ -566,6 +565,8 @@ CSS::RequiredInvalidationAfterStyleChange Element::recompute_style()
 
     recompute_pseudo_element_style(CSS::PseudoElement::Before);
     recompute_pseudo_element_style(CSS::PseudoElement::After);
+    if (m_rendered_in_top_layer)
+        recompute_pseudo_element_style(CSS::PseudoElement::Backdrop);
     if (had_list_marker || m_computed_properties->display().is_list_item())
         recompute_pseudo_element_style(CSS::PseudoElement::Marker);
 
@@ -1206,16 +1207,16 @@ GC::Ptr<Layout::NodeWithStyle> Element::get_pseudo_element_node(CSS::PseudoEleme
     return nullptr;
 }
 
-bool Element::affected_by_hover() const
+bool Element::affected_by_pseudo_class(CSS::PseudoClass pseudo_class) const
 {
-    if (m_computed_properties && m_computed_properties->did_match_any_hover_rules()) {
+    if (m_computed_properties && m_computed_properties->has_attempted_match_against_pseudo_class(pseudo_class)) {
         return true;
     }
     if (m_pseudo_element_data) {
         for (auto& pseudo_element : *m_pseudo_element_data) {
             if (!pseudo_element.computed_properties)
                 continue;
-            if (pseudo_element.computed_properties->did_match_any_hover_rules())
+            if (pseudo_element.computed_properties->has_attempted_match_against_pseudo_class(pseudo_class))
                 return true;
         }
     }
@@ -2516,7 +2517,7 @@ JS::ThrowCompletionOr<void> Element::upgrade_element(GC::Ref<HTML::CustomElement
         set_custom_element_state(CustomElementState::Precustomized);
 
         // 3. Let constructResult be the result of constructing C, with no arguments.
-        auto construct_result = TRY(WebIDL::construct(constructor));
+        auto construct_result = TRY(WebIDL::construct(constructor, {}));
 
         // 4. If SameValue(constructResult, element) is false, then throw a TypeError.
         if (!JS::same_value(construct_result, this))
@@ -2546,7 +2547,7 @@ JS::ThrowCompletionOr<void> Element::upgrade_element(GC::Ref<HTML::CustomElement
 
     // FIXME: 9. If element is a form-associated custom element, then:
     //           1. Reset the form owner of element. If element is associated with a form element, then enqueue a custom element callback reaction with element, callback name "formAssociatedCallback", and « the associated form ».
-    //           2. If element is disabled, then enqueue a custom element callback reaction with element, callback name "formDisabledCallback" and « true ».
+    //           2. If element is disabled, then enqueue a custom element callback reaction with element, callback name "formDisabledCallback", and « true ».
 
     // 10. Set element's custom element state to "custom".
     set_custom_element_state(CustomElementState::Custom);
@@ -2625,7 +2626,7 @@ Optional<String> Element::locate_a_namespace_prefix(Optional<String> const& name
     }
 
     // 3. If element’s parent element is not null, then return the result of running locate a namespace prefix on that element using namespace.
-    if (auto* parent = this->parent_element())
+    if (auto parent = this->parent_element())
         return parent->locate_a_namespace_prefix(namespace_);
 
     // 4. Return null
@@ -2880,7 +2881,7 @@ bool Element::check_visibility(Optional<CheckVisibilityOptions> options)
         return false;
 
     // 2. If an ancestor of this in the flat tree has content-visibility: hidden, return false.
-    for (auto* element = parent_element(); element; element = element->parent_element()) {
+    for (auto element = parent_element(); element; element = element->parent_element()) {
         if (element->computed_properties()->content_visibility() == CSS::ContentVisibility::Hidden)
             return false;
     }
@@ -3150,7 +3151,11 @@ Element const* Element::list_owner() const
         return nullptr;
 
     // 2. Let ancestor be the element's parent.
-    auto const* ancestor = parent_element();
+    auto ancestor = parent_element();
+
+    // AC-HOC: There may not be any parent element in a shadow tree.
+    if (!ancestor)
+        return nullptr;
 
     // 3. If the element has an ol, ul, or menu ancestor, set ancestor to the closest such ancestor element.
     for_each_ancestor([&ancestor](GC::Ref<Node> node) {
@@ -3162,7 +3167,6 @@ Element const* Element::list_owner() const
     });
 
     // 4. Return the closest inclusive ancestor of ancestor that produces a CSS box.
-    // Spec-Note: Such an element will always exist, as at the very least the document element will always produce a CSS box.
     ancestor->for_each_inclusive_ancestor([&ancestor](GC::Ref<Node> node) {
         if (is<Element>(*node) && node->paintable_box()) {
             ancestor = static_cast<Element const*>(node.ptr());
@@ -3688,7 +3692,7 @@ void Element::inherit_counters()
 {
     // 1. If element is the root of its document tree, the element has an initially-empty CSS counters set.
     //    Return.
-    auto* parent = parent_element();
+    auto parent = parent_element();
     if (parent == nullptr) {
         // NOTE: We represent an empty counters set with `m_counters_set = nullptr`.
         m_counters_set = nullptr;
@@ -3761,14 +3765,14 @@ Optional<String> Element::lang() const
 
         // 3. If the node's parent is a shadow root
         //      Use the language of that shadow root's host.
-        if (auto const* parent = parent_element()) {
+        if (auto parent = parent_element()) {
             if (parent->is_shadow_root())
                 return parent->shadow_root()->host()->lang();
         }
 
         // 4. If the node's parent element is not null
         //      Use the language of that parent element.
-        if (auto const* parent = parent_element())
+        if (auto parent = parent_element())
             return parent->lang();
 
         // 5. Otherwise
@@ -3795,4 +3799,24 @@ Optional<String> Element::lang() const
         return {};
     return maybe_lang.release_value();
 }
+
+void Element::set_pointer_capture(WebIDL::Long pointer_id)
+{
+    (void)pointer_id;
+    dbgln("FIXME: Implement Element::setPointerCapture()");
+}
+
+void Element::release_pointer_capture(WebIDL::Long pointer_id)
+{
+    (void)pointer_id;
+    dbgln("FIXME: Implement Element::releasePointerCapture()");
+}
+
+bool Element::has_pointer_capture(WebIDL::Long pointer_id)
+{
+    (void)pointer_id;
+    dbgln("FIXME: Implement Element::hasPointerCapture()");
+    return false;
+}
+
 }

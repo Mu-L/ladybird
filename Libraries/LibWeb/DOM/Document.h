@@ -26,6 +26,7 @@
 #include <LibWeb/CSS/StyleSheetList.h>
 #include <LibWeb/Cookie/Cookie.h>
 #include <LibWeb/DOM/ParentNode.h>
+#include <LibWeb/DOM/ShadowRoot.h>
 #include <LibWeb/HTML/BrowsingContext.h>
 #include <LibWeb/HTML/CrossOrigin/OpenerPolicy.h>
 #include <LibWeb/HTML/DocumentReadyState.h>
@@ -252,8 +253,9 @@ public:
 
     virtual FlyString node_name() const override { return "#document"_fly_string; }
 
-    void invalidate_style_for_elements_affected_by_hover_change(Node& old_new_hovered_common_ancestor, GC::Ptr<Node> hovered_node);
-    void set_hovered_node(Node*);
+    void invalidate_style_for_elements_affected_by_pseudo_class_change(CSS::PseudoClass, auto& element_slot, Node& old_new_common_ancestor, auto node);
+
+    void set_hovered_node(GC::Ptr<Node>);
     Node* hovered_node() { return m_hovered_node.ptr(); }
     Node const* hovered_node() const { return m_hovered_node.ptr(); }
 
@@ -426,14 +428,13 @@ public:
     Element* focused_element() { return m_focused_element.ptr(); }
     Element const* focused_element() const { return m_focused_element.ptr(); }
 
-    void set_focused_element(Element*);
+    void set_focused_element(GC::Ptr<Element>);
 
     Element const* active_element() const { return m_active_element.ptr(); }
-
-    void set_active_element(Element*);
+    void set_active_element(GC::Ptr<Element>);
 
     Element const* target_element() const { return m_target_element.ptr(); }
-    void set_target_element(Element*);
+    void set_target_element(GC::Ptr<Element>);
 
     void try_to_scroll_to_the_fragment();
     void scroll_to_the_fragment();
@@ -546,6 +547,7 @@ public:
     void unregister_viewport_client(ViewportClient&);
     void inform_all_viewport_clients_about_the_current_viewport_rect();
 
+    bool has_focus_for_bindings() const;
     bool has_focus() const;
 
     bool allow_focus() const;
@@ -1180,7 +1182,7 @@ private:
 
     mutable GC::Ptr<WebIDL::ObservableArray> m_adopted_style_sheets;
 
-    Vector<GC::Ref<DOM::ShadowRoot>> m_shadow_roots;
+    ShadowRoot::DocumentShadowRootList m_shadow_roots;
 
     Optional<Core::DateTime> m_last_modified;
 
